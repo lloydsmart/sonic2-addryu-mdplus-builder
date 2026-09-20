@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install lint dependencies
+        run: python -m pip install --disable-pip-version-check '.[lint]'
+      - name: Lint
+        run: ruff check .
+      - name: Compile
+        run: python -m compileall -q tools tests
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate default track manifest
+        run: python -m tools.mdplus_builder validate-manifest --manifest config/tracks.json
+      - name: Validate pinned source conversion
+        run: |
+          python -m tools.mdplus_builder bootstrap --skip-assembler-build
+          python -m tools.mdplus_builder prepare-source

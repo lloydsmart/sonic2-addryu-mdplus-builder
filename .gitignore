@@ -1,0 +1,29 @@
+/build/
+/dist/
+/inputs/
+*.pyc
+__pycache__/
+.venv/
+.ruff_cache/
+*.egg-info/
+
+# Never commit game or soundtrack material.
+*.bin
+*.gen
+*.md
+*.rom
+*.wav
+*.wave
+*.cue
+*.iso
+*.chd
+
+# Documentation is intentionally tracked.
+!README.md
+!AGENTS.md
+!CHANGELOG.md
+!CODE_OF_CONDUCT.md
+!CONTRIBUTING.md
+!SECURITY.md
+!THIRD_PARTY_NOTICES.md
+!docs/**/*.md

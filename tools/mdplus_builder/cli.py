@@ -1,0 +1,188 @@
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import sys
+from pathlib import Path
+
+from .audio import convert_audio_file, detect_loops, prepare_audio, score_loop, validate_manifest, validate_wave
+from .common import (
+    BUILD,
+    DEFAULT_MANIFEST,
+    DIST,
+    ROM_PATH,
+    SOURCE_DIR,
+    BuildError,
+    crc32,
+    require_program,
+)
+from .package import assemble, cue_text
+from .source import apply_mdplus, bootstrap, build_rom, verify_rom
+
+
+def _path(value: str) -> Path:
+    return Path(value).expanduser().resolve()
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(
+        prog="sonic2-mdplus",
+        description="Build a legal, reproducible Sonic 2 Addryu MD+ package from user-supplied inputs.",
+    )
+    commands = root.add_subparsers(dest="command", required=True)
+    commands.add_parser("doctor", help="check required host programs")
+
+    p = commands.add_parser("bootstrap", help="fetch pinned source and assembler dependencies")
+    p.add_argument("--local-source", type=_path, help="clone the Sonic source from an existing local checkout")
+    p.add_argument("--skip-assembler-build", action="store_true")
+
+    p = commands.add_parser("prepare-source", help="apply the deterministic MD+ source conversion")
+    p.add_argument("--source-dir", type=_path, default=SOURCE_DIR)
+
+    p = commands.add_parser("build-rom", help="build and verify the Rev 0 MD+ ROM")
+    p.add_argument("--source-dir", type=_path, default=SOURCE_DIR)
+    p.add_argument("--output", type=_path, default=ROM_PATH)
+
+    p = commands.add_parser("verify-rom", help="verify a generated ROM's checksum and MD+ signatures")
+    p.add_argument("rom", type=_path)
+    p.add_argument("--strict-regression", action="store_true")
+
+    p = commands.add_parser("verify-clean-rom", help="verify a user-supplied clean Sonic 2 Rev 0 ROM")
+    p.add_argument("rom", type=_path)
+
+    p = commands.add_parser("validate-manifest", help="validate track definitions and print the CUE")
+    p.add_argument("--manifest", type=_path, default=DEFAULT_MANIFEST)
+
+    p = commands.add_parser("prepare-audio", help="convert enabled user WAVs to MD+ format")
+    p.add_argument("--manifest", type=_path, default=DEFAULT_MANIFEST)
+    p.add_argument("--input-dir", type=_path, required=True)
+    p.add_argument("--output-dir", type=_path, default=BUILD / "audio")
+
+    p = commands.add_parser("convert-audio", help="normalize one WAV for loop analysis")
+    p.add_argument("input", type=_path)
+    p.add_argument("output", type=_path)
+    p.add_argument("--end-sector", type=int)
+    p.add_argument("--speed", type=float, default=1.0)
+
+    p = commands.add_parser("validate-audio", help="validate PCM format and optional sector length")
+    p.add_argument("wav", type=_path)
+    p.add_argument("--end-sector", type=int)
+
+    p = commands.add_parser("detect-loop", help="rank sector-aligned repeated-boundary candidates")
+    p.add_argument("wav", type=_path)
+    p.add_argument("--start-range", required=True, help="candidate start range in seconds, START:END")
+    p.add_argument("--end-range", required=True, help="candidate end range in seconds, START:END")
+    p.add_argument("--top", type=int, default=10)
+    p.add_argument("--window-ms", type=int, default=300)
+
+    p = commands.add_parser("validate-loop", help="score a defined sector-aligned loop boundary")
+    p.add_argument("wav", type=_path)
+    p.add_argument("--start-sector", type=int, required=True)
+    p.add_argument("--end-sector", type=int, required=True)
+    p.add_argument("--window-ms", type=int, default=300)
+    p.add_argument("--max-score", type=float, help="fail when normalized RMS score exceeds this value")
+
+    p = commands.add_parser("package", help="assemble the MiSTer-ready directory")
+    p.add_argument("--manifest", type=_path, default=DEFAULT_MANIFEST)
+    p.add_argument("--rom", type=_path, default=ROM_PATH)
+    p.add_argument("--audio-dir", type=_path, default=BUILD / "audio")
+
+    p = commands.add_parser("all", help="bootstrap, convert, build, prepare audio, and package")
+    p.add_argument("--manifest", type=_path, default=DEFAULT_MANIFEST)
+    p.add_argument("--input-dir", type=_path, required=True)
+    p.add_argument("--local-source", type=_path)
+
+    commands.add_parser("clean", help="remove ignored build and dist outputs")
+    return root
+
+
+def _print_json(value: object) -> None:
+    print(json.dumps(value, indent=2, sort_keys=True))
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parser().parse_args(argv)
+    try:
+        if args.command == "doctor":
+            result = {name: require_program(name) for name in ("git", "make", "gcc", "ffmpeg", "python3")}
+            _print_json(result)
+        elif args.command == "bootstrap":
+            bootstrap(local_source=args.local_source, skip_assembler_build=args.skip_assembler_build)
+        elif args.command == "prepare-source":
+            _print_json(apply_mdplus(args.source_dir))
+        elif args.command == "build-rom":
+            _print_json(build_rom(args.source_dir, args.output))
+        elif args.command == "verify-rom":
+            _print_json(verify_rom(args.rom, strict_regression=args.strict_regression))
+        elif args.command == "verify-clean-rom":
+            value = crc32(args.rom)
+            if value != "24AB4C3A":
+                raise BuildError(f"CRC32 is {value}; expected 24AB4C3A for Sonic 2 (World) Rev 0")
+            _print_json({"path": str(args.rom), "crc32": value, "revision": "World Rev 0"})
+        elif args.command == "validate-manifest":
+            manifest = validate_manifest(args.manifest)
+            print(cue_text(manifest), end="")
+        elif args.command == "prepare-audio":
+            _print_json(prepare_audio(args.manifest, args.input_dir, args.output_dir))
+        elif args.command == "convert-audio":
+            _print_json(
+                convert_audio_file(
+                    args.input,
+                    args.output,
+                    end_sector=args.end_sector,
+                    speed=args.speed,
+                )
+            )
+        elif args.command == "validate-audio":
+            _print_json(validate_wave(args.wav, end_sector=args.end_sector))
+        elif args.command == "detect-loop":
+            rows = detect_loops(
+                args.wav,
+                args.start_range,
+                args.end_range,
+                top=args.top,
+                window_ms=args.window_ms,
+            )
+            _print_json(
+                [
+                    {
+                        "score": round(score, 8),
+                        "start_sector": start,
+                        "start_seconds": start / 75,
+                        "end_sector": end,
+                        "end_seconds": end / 75,
+                        "loop_seconds": (end - start) / 75,
+                    }
+                    for score, start, end in rows
+                ]
+            )
+        elif args.command == "validate-loop":
+            score = score_loop(
+                args.wav,
+                args.start_sector,
+                args.end_sector,
+                window_ms=args.window_ms,
+            )
+            _print_json({"normalized_rms_score": score, "lower_is_better": True})
+            if args.max_score is not None and score > args.max_score:
+                raise BuildError(f"Loop score {score:.8f} exceeds limit {args.max_score:.8f}")
+        elif args.command == "package":
+            print(assemble(args.manifest, rom_path=args.rom, audio_dir=args.audio_dir))
+        elif args.command == "all":
+            bootstrap(local_source=args.local_source)
+            apply_mdplus(SOURCE_DIR)
+            build_rom()
+            prepare_audio(args.manifest, args.input_dir)
+            print(assemble(args.manifest))
+        elif args.command == "clean":
+            for directory in (BUILD, DIST):
+                if directory.exists():
+                    shutil.rmtree(directory)
+                    print(f"removed {directory}")
+        else:
+            raise AssertionError(args.command)
+        return 0
+    except BuildError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1

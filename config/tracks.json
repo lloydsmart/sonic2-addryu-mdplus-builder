@@ -1,0 +1,167 @@
+{
+  "schema": 1,
+  "rom_basename": "Sonic 2 - Addryu Mega-CD Remix MD+",
+  "notes": "Only track 03 is enabled because its loop has been verified on MiSTer. Define and verify the remaining loop boundaries before enabling them.",
+  "tracks": [
+    {
+      "track": 3,
+      "name": "Emerald Hill Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 01 Emerald Hill Zone.wav",
+      "enabled": true,
+      "mode": "loop",
+      "loop_start_sector": 292,
+      "loop_end_sector": 3892,
+      "verification": "mister-hardware"
+    },
+    {
+      "track": 5,
+      "name": "Chemical Plant Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 02 Chemical Plant Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 7,
+      "name": "Aquatic Ruin Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 03 Aquatic Ruin Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 8,
+      "name": "Casino Night Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 04 Casino Night Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 9,
+      "name": "Hill Top Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 05 Hill Top Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 10,
+      "name": "Mystic Cave Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 06 Mystic Cave Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 11,
+      "name": "Oil Ocean Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 07 Oil Ocean Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 12,
+      "name": "Metropolis Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 08 Metropolis Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 13,
+      "name": "Sky Chase Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 09 Sky Chase Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 14,
+      "name": "Wing Fortress Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 10 Wing Fortress Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 15,
+      "name": "Death Egg Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 11 Death Egg Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 29,
+      "name": "Special Stage",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 12 Special Stage (+ Ripping Guitar Solo).wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 26,
+      "name": "Emerald Hill Zone (2P)",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 13 Emerald Hill Zone (2P).wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 28,
+      "name": "Mystic Cave Zone (2P)",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 14 Mystic Cave Zone (2P).wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 27,
+      "name": "Casino Night Zone (2P)",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 15 Casino Night Zone (2P).wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    },
+    {
+      "track": 31,
+      "name": "Hidden Palace Zone",
+      "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 16 Hidden Palace Zone.wav",
+      "enabled": false,
+      "mode": "loop",
+      "loop_start_sector": null,
+      "loop_end_sector": null,
+      "verification": "pending"
+    }
+  ]
+}
