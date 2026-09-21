@@ -27,6 +27,7 @@ Before proposing a change, run:
 
 ```sh
 ruff check .
+npm run lint:markdown
 python3 -m compileall -q tools tests
 python3 -m unittest discover -s tests -v
 python3 -m tools.mdplus_builder validate-manifest --manifest config/tracks.json

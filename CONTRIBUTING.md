@@ -28,6 +28,23 @@ python -m unittest discover -s tests -v
 The supported integration environment is Linux with Git, Make, GCC, Python
 3.10 or newer, and FFmpeg. See the README for the complete build workflow.
 
+For documentation linting, install Node.js 24 and run:
+
+```sh
+npm ci --ignore-scripts
+npm run lint:markdown
+```
+
+Node.js is only needed for Markdownlint, not for building the game. Linting
+excludes generated build/output directories, user inputs, and dependencies.
+
+CI runs Ruff when Python files or Ruff configuration change, and Markdownlint
+when Markdown files or its configuration/dependencies change. Changes to the CI
+workflow run both linters. Each selected linter checks all applicable project
+files. Pull requests use the full PR diff; pushes use the changes since the
+previous branch tip. The required `test` check always runs, including the unit
+tests and source validation, so skipped lint steps never leave it pending.
+
 ## Pull requests
 
 Keep pull requests focused and describe any legal/provenance implications.
