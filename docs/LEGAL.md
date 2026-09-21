@@ -5,6 +5,13 @@ and documentation. It does not contain Sonic the Hedgehog 2 ROM data, Sega
 assets, the Addryu album, converted soundtrack files, or prebuilt assembler
 binaries.
 
+Buy the soundtrack directly from
+[Addryu on Bandcamp](https://addryu.bandcamp.com/album/sonic-the-hedgehog-2-mega-cd-remix)
+and use the WAV download from your purchase. We do not condone unauthorized
+distribution of Addryu's work, including converted audio or completed packages.
+A purchase does not grant redistribution rights, and our GPL license does not
+apply to the soundtrack.
+
 The repository's original tooling is distributed under GPL-3.0-only. That
 license applies to this project, not to Sega assets, third-party music, or the
 separately fetched dependencies described in `THIRD_PARTY_NOTICES.md`.

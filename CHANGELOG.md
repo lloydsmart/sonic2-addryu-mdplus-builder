@@ -9,6 +9,10 @@ Versioning for its own tooling releases.
 
 ### Added
 
+- Prominent guidance to purchase Addryu's album from Bandcamp and not
+  redistribute the original or converted soundtrack.
+- Dependabot version updates for Python development dependencies.
+
 - Reproducible, pinned Sonic 2 MD+ source conversion.
 - Rev 0 ROM checksum, signature, size, and SHA-256 verification.
 - WAV normalization, sector-aligned trimming, loop candidate detection, loop

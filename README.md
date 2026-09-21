@@ -7,6 +7,21 @@ turns user-supplied Addryu WAVs into a MiSTer-ready directory. It does **not**
 contain or distribute a ROM, Sega assets, the Addryu soundtrack, or proprietary
 binaries.
 
+## Support Addryu — buy the soundtrack
+
+**To use this builder, buy Addryu's
+[Sonic the Hedgehog 2 [Mega-CD Remix] album on Bandcamp](https://addryu.bandcamp.com/album/sonic-the-hedgehog-2-mega-cd-remix)
+and download your purchase in WAV format.** Please support the artist whose
+work makes this soundtrack possible.
+
+We do not condone unauthorized distribution of Addryu's work. Do not share or
+upload the purchased tracks, converted or trimmed WAVs, or a finished package
+containing them. Purchasing the album does not grant permission to redistribute
+it, and this project's GPL license does not cover the music. The builder does
+not download audio; you supply your own legitimately purchased files.
+
+## Build status
+
 Current status: the ROM conversion and Emerald Hill are reproducible. Emerald
 Hill's sector `292 → 3892` loop has been verified as seamless on MiSTer. The
 other Addryu tracks are mapped but deliberately disabled until their loop
