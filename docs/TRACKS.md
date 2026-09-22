@@ -5,7 +5,7 @@ sample frames per sector at 44.1 kHz. Every looping output is therefore trimmed
 to exactly `loop_end_sector * 588` frames, and its CUE entry contains
 `REM LOOP loop_start_sector`.
 
-The checked-in manifest enables only loops that have been tested end to end:
+Tracks marked `mister-hardware` have been tested end to end on MiSTer:
 
 | Addryu album track | Sonic/MD+ track | Loop start | Loop end | Result |
 | --- | ---: | ---: | ---: | --- |
@@ -13,9 +13,11 @@ The checked-in manifest enables only loops that have been tested end to end:
 | 02 Chemical Plant Zone | 05 | 1900 | 5500 | Seamless on MiSTer |
 | 03 Aquatic Ruin Zone | 07 | 828 | 4284 | Seamless on MiSTer |
 
-The remaining album-to-game mappings are recorded in `config/tracks.json`, but
-remain disabled with `pending` verification. This prevents an unmeasured or
-guessed loop from silently entering a release build.
+The remaining album-to-game mappings are recorded in `config/tracks.json`.
+A track may be enabled with `pending` verification once its loop has been
+measured and locally auditioned; `mister-hardware` is reserved for the final
+end-to-end MiSTer pass. Unmeasured or guessed loops therefore remain disabled
+and cannot silently enter a release build.
 
 ## Fixed ROM routing
 

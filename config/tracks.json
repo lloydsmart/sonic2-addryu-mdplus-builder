@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "rom_basename": "Sonic 2 - Addryu Mega-CD Remix MD+",
-  "notes": "Tracks 03, 05 and 07 are enabled because their loops have been verified on MiSTer. Define and verify the remaining loop boundaries before enabling them.",
+  "notes": "Tracks with measured and locally auditioned loop boundaries may be enabled with pending verification. Tracks marked mister-hardware have additionally been verified end to end on MiSTer.",
   "tracks": [
     {
       "track": 3,
@@ -37,10 +37,10 @@
       "track": 8,
       "name": "Casino Night Zone",
       "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 04 Casino Night Zone.wav",
-      "enabled": false,
+      "enabled": true,
       "mode": "loop",
-      "loop_start_sector": null,
-      "loop_end_sector": null,
+      "loop_start_sector": 1137,
+      "loop_end_sector": 5137,
       "verification": "pending"
     },
     {
