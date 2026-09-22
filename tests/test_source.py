@@ -4,10 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tools.mdplus_builder.common import BuildError
 from tools.mdplus_builder.source import (
     CLOSE_PATTERN,
     COMMAND_ADDRESS_PATTERN,
     EXPECTED_CONVERSION_COUNTS,
+    LEGACY_CONVERSION_COUNTS,
     OPEN_PATTERN,
     OVERLAY_CLOSE_LINE,
     OVERLAY_OPEN_LINE,
@@ -51,7 +53,7 @@ class SourceConversionTests(unittest.TestCase):
     def test_every_command_is_a_self_contained_overlay_transaction(self) -> None:
         converted, counts = _convert_msu_source(_msu_source_fixture())
 
-        self.assertEqual(counts, EXPECTED_CONVERSION_COUNTS)
+        self.assertEqual(counts, LEGACY_CONVERSION_COUNTS)
         self.assertNotIn("MCD_", converted)
         self.assertNotIn(
             "PlayMusic:\nPlayMSU:\n    " + OVERLAY_OPEN_LINE,
@@ -80,9 +82,17 @@ class SourceConversionTests(unittest.TestCase):
             converted,
         )
 
+    def test_unexpected_upstream_poll_seek_or_clock_counts_fail(self) -> None:
+        fixture = _msu_source_fixture()
+        for removed in ['    tst.b   MCD_STAT\n    bne.s   track_1\n',
+                        '    move.l  #(1),MCD_SEEK\n',
+                        '    addq.b  #1,MCD_CMD_CK\n']:
+            with self.subTest(removed=removed), self.assertRaises(BuildError):
+                _convert_msu_source(fixture.replace(removed, '', 1))
+
     def test_rom_verification_counts_all_transaction_signatures(self) -> None:
         data = bytearray(0x200)
-        for index in range(52):
+        for index in range(EXPECTED_CONVERSION_COUNTS["commands"]):
             data.extend(OPEN_PATTERN)
             data.extend(TRACK03_PATTERN if index == 2 else b"\x33\xfc\x11\x01" + COMMAND_ADDRESS_PATTERN)
             data.extend(CLOSE_PATTERN)
@@ -94,10 +104,24 @@ class SourceConversionTests(unittest.TestCase):
             path.write_bytes(data)
             result = verify_rom(path)
 
-        self.assertEqual(result["overlay_open_signatures"], 52)
-        self.assertEqual(result["command_signatures"], 52)
-        self.assertEqual(result["overlay_close_signatures"], 52)
+        self.assertEqual(result["overlay_open_signatures"], 21)
+        self.assertEqual(result["command_signatures"], 21)
+        self.assertEqual(result["overlay_close_signatures"], 21)
         self.assertEqual(result["track03_signatures"], 1)
+
+    def test_equal_signature_counts_do_not_accept_nonconsecutive_transactions(self) -> None:
+        data = bytearray(0x200)
+        for index in range(EXPECTED_CONVERSION_COUNTS["commands"]):
+            data.extend(OPEN_PATTERN)
+            data.extend(b"\x4e\x71")  # NOP: same counts, unsafe transaction layout
+            data.extend(TRACK03_PATTERN if index == 2 else b"\x33\xfc\x11\x01" + COMMAND_ADDRESS_PATTERN)
+            data.extend(CLOSE_PATTERN)
+        data[0x18E:0x190] = genesis_checksum(bytes(data))[1].to_bytes(2, "big")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "test.md"
+            path.write_bytes(data)
+            with self.assertRaisesRegex(BuildError, "Non-consecutive"):
+                verify_rom(path)
 
 
 if __name__ == "__main__":

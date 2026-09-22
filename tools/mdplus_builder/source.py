@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -7,15 +8,16 @@ import stat
 from pathlib import Path
 
 from .common import ASSEMBLER_DIR, BUILD, DEPENDENCIES, ROM_PATH, SOURCE_DIR, BuildError, load_json, run, sha256
+from .driver import verify_driver_load
 
 EXPECTED_ROM_SIZE = 2_129_922
-PROVEN_SHA256 = "b388cd875145b1c637623bd0846bd071c7fefd12b289e3912fd9dbd63a50956b"
+REGRESSION_SHA256 = "93a8cd08f70843ec2416bfea5eb89cc7e5f643cddb84d491fe85ad349ff621d4"
 OPEN_PATTERN = bytes.fromhex("33 fc cd 54 00 03 f7 fa")
 CLOSE_PATTERN = bytes.fromhex("33 fc 00 00 00 03 f7 fa")
 COMMAND_ADDRESS_PATTERN = bytes.fromhex("00 03 f7 fe")
 TRACK03_PATTERN = bytes.fromhex("33 fc 12 03 00 03 f7 fe")
 
-EXPECTED_CONVERSION_COUNTS = {
+LEGACY_CONVERSION_COUNTS = {
     "definitions": 1,
     "polls": 50,
     "seeks": 31,
@@ -66,6 +68,11 @@ def _audit_mdplus_transactions(text: str) -> dict[str, int]:
             raise BuildError(f"MD+ command on source line {index + 1} is not preceded by overlay-open")
         if index + 1 >= len(lines) or lines[index + 1].strip() != OVERLAY_CLOSE_LINE:
             raise BuildError(f"MD+ command on source line {index + 1} is not followed by overlay-close")
+
+    if set(open_lines) != {index - 1 for index in command_lines} or set(close_lines) != {
+        index + 1 for index in command_lines
+    }:
+        raise BuildError("Orphan MD+ overlay open/close outside a command transaction")
 
     play_marker = "PlayMusic:\nPlayMSU:\n"
     if text.count(play_marker) != 1:
@@ -133,7 +140,7 @@ def _convert_msu_source(text: str) -> tuple[str, dict[str, int]]:
         "seamless": seamless,
         **_audit_mdplus_transactions(text),
     }
-    for key, expected in EXPECTED_CONVERSION_COUNTS.items():
+    for key, expected in LEGACY_CONVERSION_COUNTS.items():
         if actual[key] != expected:
             raise BuildError(
                 f"Conversion count changed for {key}: got {actual[key]}, expected {expected}"
@@ -150,69 +157,211 @@ def bootstrap(*, local_source: Path | None = None, skip_assembler_build: bool = 
         run(["make", f"-j{os.cpu_count() or 2}", "binaries"], cwd=ASSEMBLER_DIR)
 
 
-def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
-    if not (source_dir / ".git").exists():
-        raise BuildError(f"Not a Git source checkout: {source_dir}")
-    status = _git_output(source_dir, "status", "--porcelain")
-    if status:
-        msu_existing = (source_dir / "msu-md.asm").read_text(encoding="utf-8")
-        s2_existing = (source_dir / "s2.asm").read_text(encoding="utf-8")
-        actual_status = {line.strip() for line in status.splitlines()}
-        expected_statuses = (
-            {"M msu-md.asm", "M s2.asm"},
-            {"M build.sh", "M msu-md.asm", "M s2.asm"},
-        )
-        already_prepared = (
-            actual_status in expected_statuses
-            and "MDP_CTRL        = $0003F7FA" in msu_existing
-            and not re.search(r"\bMCD_[A-Z_]+\b", msu_existing)
-            and "MD+ is opened later" in s2_existing
-            and 'BINCLUDE  "sound\\msu-drv-loop.bin"' not in s2_existing
-        )
-        if already_prepared:
-            counts = _audit_mdplus_transactions(msu_existing)
-            for key, expected in EXPECTED_CONVERSION_COUNTS.items():
-                if key in counts and counts[key] != expected:
-                    raise BuildError(
-                        f"Prepared source count changed for {key}: "
-                        f"got {counts[key]}, expected {expected}"
-                    )
-            return {"already_prepared": 1, **counts}
-        raise BuildError(f"Source checkout has unexpected changes: {source_dir}\n{status}")
+# This is ROM policy, deliberately independent of manifest/audio/package inputs.
+ADDRYU_TRACKS = (
+    ("MusID_EHZ", 3), ("MusID_CPZ", 5), ("MusID_ARZ", 7), ("MusID_CNZ", 8),
+    ("MusID_HTZ", 9), ("MusID_MCZ", 10), ("MusID_OOZ", 11), ("MusID_MTZ", 12),
+    ("MusID_SCZ", 13), ("MusID_WFZ", 14), ("MusID_DEZ", 15), ("MusID_SpecStage", 29),
+    ("MusID_EHZ_2P", 26), ("MusID_CNZ_2P", 27), ("MusID_MCZ_2P", 28), ("MusID_HPZ", 31),
+)
+EXPECTED_CONVERSION_COUNTS = {
+    **{key: value for key, value in LEGACY_CONVERSION_COUNTS.items()
+       if key not in {"commands", "overlay_opens", "overlay_closes"}},
+    "commands": 21, "overlay_opens": 21, "overlay_closes": 21,
+}
+# Hashes are of UTF-8 source with LF newlines at the immutable dependency pin.
+UPSTREAM_HASHES = {
+    "msu-md.asm": "724b846275876b823a59f5f41cc3d38a3976a75c4cecdf8f7f682e91bc73d288",
+    "s2.asm": "566a6a88517444ab4eec5c79f4b47fa5091e630cfbae7b1736cff42144fe8fda",
+    "s2.constants.asm": "597b9bca0b9f7f563dbda51d1f7fc1131ab07480d88a5e6d492cc5c2449d139e",
+    "s2.sounddriver.asm": "7820f237ba3b4a1b3158341cbd55e5ac7b5073883de1e1c7cbf9f6dcedfa0fb9",
+}
 
-    s2_path = source_dir / "s2.asm"
-    s2_lines = s2_path.read_text(encoding="utf-8").splitlines(keepends=True)
-    starts = [i for i, line in enumerate(s2_lines) if "jsr" in line and "MSUMD_DRV" in line]
+
+def _replace_exact(text: str, old: str, new: str, count: int = 1) -> str:
+    if text.count(old) != count:
+        raise BuildError(f"Expected {count} upstream matches for {old!r}, got {text.count(old)}")
+    return text.replace(old, new)
+
+
+def _hybrid_msu_source() -> str:
+    text = Path(__file__).with_name("hybrid.asm").read_text(encoding="utf-8")
+    text = _replace_exact(text, "; @ROUTE@", "\n".join(
+        f"    cmp.b   #{symbol},d0\n    beq.w   HybridRequest" for symbol, _ in ADDRYU_TRACKS
+    ))
+    text = _replace_exact(text, "; @DISPATCH@", "\n".join(
+        f"    cmp.b   #{symbol},d0\n    beq.w   MDPlusTrack{track:02d}" for symbol, track in ADDRYU_TRACKS
+    ))
+
+    def command(label: str, operand: str) -> str:
+        return (f"{label}:\n    {OVERLAY_OPEN_LINE}\n"
+                f"    move.w  #{operand},(MDP_CMD).l\n    {OVERLAY_CLOSE_LINE}\n    rts\n")
+
+    text = _replace_exact(text, "; @COMMANDS@", "\n".join(
+        command(label, operand) for label, operand in (
+            ("MDPlusImmediate", "$1300"), ("MDPlusFade", "$1328"), ("MDPlusResume", "$1400"),
+            ("MDPlusVolumeLow", "$1519"), ("MDPlusVolumeNormal", "$15FF"),
+        )
+    ))
+    return _replace_exact(text, "; @TRACKS@", "\n".join(
+        command(f"MDPlusTrack{track:02d}", f"($1200|{track})") for _, track in ADDRYU_TRACKS
+    ))
+
+
+def _legacy_s2_source(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    starts = [i for i, line in enumerate(lines) if "jsr" in line and "MSUMD_DRV" in line]
     if len(starts) != 1:
         raise BuildError(f"Expected one MSUMD_DRV startup call, found {len(starts)}")
     start = starts[0]
-    try:
-        end = next(i for i in range(start, start + 20) if "bra.s" in s2_lines[i] and "msuOK" in s2_lines[i])
-    except StopIteration as exc:
-        raise BuildError("Could not locate the end of the MSU-MD startup block") from exc
-    s2_lines[start : end + 1] = [
+    end = next(i for i in range(start, start + 20) if "bra.s" in lines[i] and "msuOK" in lines[i])
+    lines[start:end + 1] = [
         "    ; MD+ is opened later, after Sonic's startup checksum has completed\n",
         "    bra.s   msuOK\n",
     ]
-    driver_labels = [i for i, line in enumerate(s2_lines) if line.strip() == "MSUMD_DRV:"]
-    if len(driver_labels) != 1:
-        raise BuildError(f"Expected one MSUMD_DRV label, found {len(driver_labels)}")
-    label = driver_labels[0]
-    try:
-        include = next(i for i in range(label + 1, label + 6) if "BINCLUDE" in s2_lines[i] and "msu-drv-loop.bin" in s2_lines[i])
-    except StopIteration as exc:
-        raise BuildError("Could not locate the obsolete MSU-MD driver include") from exc
-    s2_lines[include] = "        rts\n"
-    s2_path.write_text("".join(s2_lines), encoding="utf-8", newline="\n")
+    return _replace_exact("".join(lines), '        BINCLUDE  "sound\\msu-drv-loop.bin"', '        rts')
 
-    msu_path = source_dir / "msu-md.asm"
-    text = msu_path.read_text(encoding="utf-8")
-    text, actual = _convert_msu_source(text)
-    msu_path.write_text(text, encoding="utf-8", newline="\n")
 
-    build_script = source_dir / "build.sh"
-    build_script.chmod(build_script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    return actual
+def _hybrid_s2_source(text: str) -> str:
+    text = _legacy_s2_source(text)
+    text = _replace_exact(text, "\tbsr.w\tJmpTo_SoundDriverLoad\n",
+                          "\tbsr.w\tJmpTo_SoundDriverLoad\n\tbsr.w\tHybridReset\n")
+    text = _replace_exact(text, "sndDriverInput:\n", "sndDriverInput:\n\tbsr.w\tHybridCheckReady\n")
+    text = _replace_exact(text, "loc_10C0:\n", """loc_10C0:
+    cmpi.b  #MusID_HybridStop,d0
+    bne.s   HybridInputNormal
+    clr.b   (Z80_RAM+zHybridAck).l
+    move.b  #2,(v_MDPlusHandoff).l
+HybridInputNormal:
+""")
+    # The upstream fourth copy slot aliases VoiceTblPtr, not a queue slot.
+    # Leave the second music mailbox for the ready-checked path above.
+    text = _replace_exact(text, "loc_10C4:\n\tmoveq\t#4-1,d1",
+                          "loc_10C4:\n\tmoveq\t#3-1,d1")
+    text = _replace_exact(text,
+        "\t\t\t\t; FFE4 (Music_to_play_2) goes to 1B8C (zMusicToPlay),\n", "")
+    # Preserve native SFX stores, but route music/control IDs that also enter here.
+    text = _replace_exact(text, "PlaySound:\n", """PlaySound:
+    cmp.b   #MusID__First,d0
+    blo.s   HybridSoundEffect
+    cmp.b   #MusID__End,d0
+    blo.w   PlayMusic
+    cmp.b   #MusID_FadeOut,d0
+    beq.w   PlayMusic
+    cmp.b   #MusID_SpeedUp,d0
+    bhs.w   PlayMusic
+HybridSoundEffect:
+""")
+    # Route all four direct pause writes (normal, slow-motion, special stage).
+    for control, count in (("Pause", 1), ("Unpause", 3)):
+        import_pattern = rf"(?m)^\tmove.b\t#MusID_{control},\(Music_to_play\).w[^\n]*\n"
+        text, actual = re.subn(import_pattern,
+            f"\tmove.b\t#MusID_{control},d0\n\tbsr.w\tPlayMusic\n", text)
+        if actual != count:
+            raise BuildError(f"Unexpected direct {control} writes: {actual}")
+    for line in (
+        "\tjsr \tmsuStop\n", "\tjsr\t\tmsuResume\n",
+        "\tjsr \tmsuChangeTrackSpeed ; @todo speed up music\n",
+        "\tjsr \tmsuRestoreTrackSpeed ; @todo slow down music\n",
+        "\tjsr \tmsuStop\t\t; @todo fade music for return to title\n",
+    ):
+        text = _replace_exact(text, line, "")
+    text = _replace_exact(text, "msuStop ; @todo fade out music with demo", "HybridFadeRequest", 2)
+    text = _replace_exact(text, "msuStop ; @todo mute music for return to title", "HybridStopRequest")
+    text = _replace_exact(text,
+        "\t;move.b\t#MusID_Stop,d0\n\t;bsr.w\tPlayMusic ; stop music\n\tjsr \tmsuPlaySega",
+        "\tmove.b\t#MusID_Stop,d0\n\tbsr.w\tPlayMusic ; stop music")
+    text = _replace_exact(text,
+        '\t;move.b\t#SndID_SegaSound,d0\n\t;bsr.w\tPlaySound\t; play "SEGA" sound',
+        '\tmove.b\t#SndID_SegaSound,d0\n\tbsr.w\tPlaySound\t; play "SEGA" sound')
+    text = _replace_exact(text, "\t;jsr \tmsuPlaySega ; @todo play sega early\n", "")
+    # The default compressor emits no trailing sentinel. The stock loader
+    # discards its last byte (potentially an entire match, including ACK/RET).
+    # Consume every byte; exit on the NEXT request, without reading past input.
+    text = _replace_exact(text, """SaxDec_GetByte:
+\tmove.b\t(a6)+,d0
+\tsubq.w\t#1,d7\t; Decrement remaining number of bytes
+\tbne.s\t+
+\taddq.w\t#4,sp\t; Exit the decompressor by meddling with the stack
++
+\trts""", """SaxDec_GetByte:
+    subq.w  #1,d7
+    bcs.s   + ; no bytes remain: return directly to the loader's caller
+    move.b  (a6)+,d0
+    rts
++
+    addq.w  #4,sp
+    rts""")
+    return text
+
+
+def _hybrid_z80_source(text: str) -> str:
+    text = _replace_exact(text, "\tcp\tMusID__End\t\t\t; is it music (less than index 20)?",
+                          "    cp MusID_HybridStop\n    jp z,zHybridStopMusic\n"
+                          "\tcp\tMusID__End\t\t\t; is it music (less than index 20)?")
+    # A queued handoff can terminate a paused native song too.
+    text = _replace_exact(text, "\tld\ta,(zAbsVar.StopMusic)\t; Get pause/unpause flag", """    ld a,(zAbsVar.QueueToPlay)
+    cp MusID_HybridStop
+    call z,zPlaySoundByIndex
+\tld\ta,(zAbsVar.StopMusic)\t; Get pause/unpause flag""")
+    text = _replace_exact(text, "zTracksSaveEnd:\n", """zTracksSaveEnd:
+zHybridAck: ds.b 1 ; outside stock track memory, including the 1-up backup
+    if zHybridAck<>$1FF4
+        fatal "Hybrid ACK RAM layout changed"
+    endif
+""")
+    extension = Path(__file__).with_name("hybrid_z80.asm").read_text(encoding="utf-8")
+    return _replace_exact(text, "; end of Z80 'ROM'", extension + "\n; end of Z80 'ROM'")
+
+
+def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
+    if not (source_dir / ".git").exists():
+        raise BuildError(f"Not a Git source checkout: {source_dir}")
+    pin = load_json(DEPENDENCIES)["source"]["commit"]
+    if _git_output(source_dir, "rev-parse", "HEAD") != pin:
+        raise BuildError("Source checkout is not at the pinned commit")
+    import subprocess
+
+    originals = {}
+    for name, expected in UPSTREAM_HASHES.items():
+        original = subprocess.check_output(
+            ["git", "show", f"HEAD:{name}"], cwd=source_dir, text=True
+        )
+        if hashlib.sha256(original.encode()).hexdigest() != expected:
+            raise BuildError(f"Pinned upstream source structure changed: {name}")
+        originals[name] = original
+    legacy_msu, legacy_counts = _convert_msu_source(originals["msu-md.asm"])
+    outputs = {
+        "msu-md.asm": _hybrid_msu_source(),
+        "s2.asm": _hybrid_s2_source(originals["s2.asm"]),
+        "s2.sounddriver.asm": _hybrid_z80_source(originals["s2.sounddriver.asm"]),
+    }
+    counts = {**legacy_counts, **_audit_mdplus_transactions(outputs["msu-md.asm"])}
+    if counts != EXPECTED_CONVERSION_COUNTS:
+        raise BuildError(f"Unexpected hybrid transformation counts: {counts}")
+    allowed = {*outputs, "build.sh"}
+    status = _git_output(source_dir, "status", "--porcelain")
+    if any(line.strip()[2:] not in allowed for line in status.splitlines()):
+        raise BuildError(f"Source checkout has unexpected changes: {source_dir}\n{status}")
+    # Validate every input before writing anything. Recognise the exact previous
+    # production conversion for upgrades; arbitrary prepared edits are rejected.
+    for name in UPSTREAM_HASHES:
+        current = (source_dir / name).read_text(encoding="utf-8")
+        accepted = {originals[name], outputs.get(name, originals[name])}
+        if name == "msu-md.asm":
+            accepted.add(legacy_msu)
+        if name == "s2.asm":
+            accepted.add(_legacy_s2_source(originals[name]))
+        if current not in accepted:
+            raise BuildError(f"Source checkout has unexpected content: {name}")
+    script = source_dir / "build.sh"
+    original_script = subprocess.check_output(["git", "show", "HEAD:build.sh"], cwd=source_dir, text=True)
+    if script.read_text() != original_script:
+        raise BuildError("Source checkout has unexpected build.sh content")
+    for name, output in outputs.items():
+        (source_dir / name).write_text(output, encoding="utf-8", newline="\n")
+    script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return counts
 
 
 def genesis_checksum(data: bytes) -> tuple[int, int]:
@@ -234,15 +383,22 @@ def verify_rom(path: Path, *, strict_regression: bool = False) -> dict[str, str 
     command_hits = data.count(COMMAND_ADDRESS_PATTERN)
     close_hits = data.count(CLOSE_PATTERN)
     track_hits = data.count(TRACK03_PATTERN)
-    if open_hits != 52 or command_hits != 52 or close_hits != 52 or track_hits != 1:
+    if (open_hits != EXPECTED_CONVERSION_COUNTS["commands"]
+            or command_hits != open_hits or close_hits != open_hits or track_hits != 1):
         raise BuildError(
             "MD+ signature check failed: "
             f"open={open_hits}, command={command_hits}, close={close_hits}, track03={track_hits}"
         )
+    for match in re.finditer(re.escape(COMMAND_ADDRESS_PATTERN), data):
+        start = match.start() - 4
+        if (data[start - 8:start] != OPEN_PATTERN
+                or data[start:start + 2] != bytes.fromhex("33 fc")
+                or data[start + 8:start + 16] != CLOSE_PATTERN):
+            raise BuildError(f"Non-consecutive MD+ transaction at ROM offset {start:#x}")
     digest = sha256(path)
-    if strict_regression and (len(data) != EXPECTED_ROM_SIZE or digest != PROVEN_SHA256):
+    if strict_regression and (len(data) != EXPECTED_ROM_SIZE or digest != REGRESSION_SHA256):
         raise BuildError(
-            "Built ROM differs from the proven regression target: "
+            "Built ROM differs from the audited regression target: "
             f"size={len(data)}, sha256={digest}"
         )
     return {
@@ -262,10 +418,11 @@ def build_rom(source_dir: Path = SOURCE_DIR, output: Path = ROM_PATH) -> dict[st
         raise BuildError("Assembler is not built; run bootstrap first")
     env = os.environ.copy()
     env["PATH"] = str(ASSEMBLER_DIR) + os.pathsep + env.get("PATH", "")
-    run(["./build.sh", "-r0"], cwd=source_dir, env=env)
+    run(["./build.sh", "-r0", "-ds"], cwd=source_dir, env=env)
     built = source_dir / "s2built.bin"
     if not built.exists():
         raise BuildError("Source build did not produce s2built.bin")
+    driver = verify_driver_load(source_dir, built.read_bytes())
     output.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(built, output)
-    return verify_rom(output, strict_regression=True)
+    return {**verify_rom(output, strict_regression=True), **driver}

@@ -16,6 +16,39 @@ The remaining album-to-game mappings are recorded in `config/tracks.json`, but
 remain disabled with `pending` verification. This prevents an unmeasured or
 guessed loop from silently entering a release build.
 
+## Fixed ROM routing
+
+Exactly these music IDs use Addryu MD+ playback. The manifest controls which
+WAVs are prepared, not which backend the ROM selects.
+
+| Sonic music ID | MD+ track |
+| --- | ---: |
+| `MusID_EHZ` | 03 |
+| `MusID_CPZ` | 05 |
+| `MusID_ARZ` | 07 |
+| `MusID_CNZ` | 08 |
+| `MusID_HTZ` | 09 |
+| `MusID_MCZ` | 10 |
+| `MusID_OOZ` | 11 |
+| `MusID_MTZ` | 12 |
+| `MusID_SCZ` | 13 |
+| `MusID_WFZ` | 14 |
+| `MusID_DEZ` | 15 |
+| `MusID_SpecStage` | 29 |
+| `MusID_EHZ_2P` | 26 |
+| `MusID_CNZ_2P` | 27 |
+| `MusID_MCZ_2P` | 28 |
+| `MusID_HPZ` | 31 |
+
+All other music uses the original Sonic 2 Mega Drive soundtrack, including
+bosses, title/options, act clear, invincibility, drowning, Super Sonic, ending,
+credits, game over, continue, and the emerald cue. SFX always remain native.
+The native 1-up jingle ducks MD+ without changing music ownership.
+
+An absent WAV for any of the sixteen IDs is an incomplete-package error and
+never triggers native fallback. Disabled entries remain MD+-owned in the ROM;
+the default package intentionally supports only the two verified Addryu cues.
+
 ## Finding the next loop
 
 First normalize a working copy, then search a bounded region for repeated
@@ -52,8 +85,11 @@ entry enabled in the default manifest.
 
 ## Speed-shoes tracks
 
-ArcadeTV's mapping reserves tracks 33-48 for faster variants. Do not derive a
-fast loop by blindly dividing sector numbers by 1.2: the result often falls
-between sectors, and time stretching can alter boundary alignment. Add a
-separate manifest entry with `"speed": 1.2`, detect its loop boundaries after
-conversion, and verify it independently.
+ArcadeTV reserved tracks 33-48 for faster variants. **This hybrid ROM cannot
+request them.** MD+ SpeedUp and SlowDown leave the current track running at
+normal speed, without restarting it. Native music retains the original tempo
+controls; Sonic's speed-shoes physics are unchanged.
+
+Enabling fast MD+ variants would require a separate ROM-policy change and
+independent audio preparation, measured loops, listening tests, and MiSTer
+verification. Do not derive fast loops by dividing sector numbers by 1.2.
