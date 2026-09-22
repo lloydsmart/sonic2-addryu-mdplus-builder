@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/lloydsmart/sonic2-addryu-mdplus-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/lloydsmart/sonic2-addryu-mdplus-builder/actions/workflows/ci.yml)
 
-This project reproducibly builds the proven Sonic 2 MD+ source conversion and
+This project reproducibly builds a hybrid Sonic 2 MD+/native music ROM and
 turns user-supplied Addryu WAVs into a MiSTer-ready directory. It does **not**
 contain or distribute a ROM, Sega assets, the Addryu soundtrack, or proprietary
 binaries.
@@ -22,11 +22,13 @@ not download audio; you supply your own legitimately purchased files.
 
 ## Build status
 
-Current status: the ROM conversion, Emerald Hill, and Chemical Plant are
-reproducible. Emerald Hill's sector `292 → 3892` loop and Chemical Plant's
-sector `1900 → 5500` loop have been verified as seamless on MiSTer. The other
-Addryu tracks are mapped but deliberately disabled until their loop points
-have been measured and hardware-tested.
+Current status: the hybrid ROM is reproducible and hardware-verified on MiSTer.
+Native title/menu music, temporary native cues, native SFX alongside MD+ BGM,
+pause/resume, fades, and progression through Emerald Hill, Chemical Plant and
+Aquatic Ruin have been tested. Emerald Hill's sector `292 → 3892` loop and
+Chemical Plant's sector `1900 → 5500` loop have been verified as seamless on
+MiSTer. The other Addryu tracks are mapped but deliberately disabled until
+their loop points have been measured and hardware-tested.
 
 ## What the build does
 
@@ -35,7 +37,9 @@ have been measured and hardware-tested.
 2. Builds the assembler locally from source.
 3. Deterministically removes the Mega-CD bootstrap/polling/seek path, replaces
    playback with MD+ commands, and wraps every command in a short-lived MD+
-   overlay transaction after Sonic's startup checksum.
+   overlay transaction after Sonic's startup checksum. A fixed sixteen-cue
+   policy routes Addryu arrangements to MD+ and all other music to the original
+   Sonic 2 YM2612/PSG/DAC soundtrack; SFX always use the native driver.
 4. Builds the Rev 0 ROM and verifies its Mega Drive header checksum, MD+
    instruction signatures, size, and SHA-256 regression value.
 5. Normalizes enabled user source audio to 44.1 kHz, signed 16-bit stereo PCM,
@@ -150,13 +154,18 @@ python3 -m tools.mdplus_builder verify-rom \
   --strict-regression build/sonic2-mdplus.md
 ```
 
-Expected proven regression values:
+Hardware-verified hybrid regression values:
 
 - size: `2,129,922` bytes
-- SHA-256: `b388cd875145b1c637623bd0846bd071c7fefd12b289e3912fd9dbd63a50956b`
-- Mega Drive checksum: `32E3`
-- 52 complete MD+ open/command/close signatures and one Emerald Hill track-03
+- SHA-256: `93a8cd08f70843ec2416bfea5eb89cc7e5f643cddb84d491fe85ad349ff621d4`
+- Mega Drive checksum: `BE38`
+- 21 complete MD+ open/command/close signatures and one Emerald Hill track-03
   signature
+
+The first hybrid hardware test failed. This corrected ROM fixes the truncated
+Z80 driver load, separates the handoff ACK from the command queue, and has since
+passed extended MiSTer testing. See the
+[failure analysis](docs/HYBRID_AUDIO.md#first-hardware-failure).
 
 ## Adding tracks and loop points
 
@@ -168,12 +177,57 @@ verification.
 
 ## Limitations
 
-The included Addryu album mappings cover the stage tracks present on the album.
-Sonic cues for which no enabled external track exists will be silent under this
-MD+ conversion. A complete soundtrack pack therefore requires lawfully
-supplied replacements for those cues and separately verified speed-shoes
-variants. The project records that limitation instead of filling gaps with
-copyrighted game or album audio.
+The [sixteen Addryu cues](docs/TRACKS.md#fixed-rom-routing) are fixed in the ROM,
+independent of manifest flags, CUE contents, and files on disk. Missing WAVs for
+those cues are incomplete-package errors; they never select native music.
+The default two-track package is deliberately a partial hardware test package.
+It does not provide the other fourteen Addryu-owned cues.
+
+Unarranged cues, including title/options, bosses, invincibility, drowning, act
+clear, ending and credits, use the original Sonic 2 soundtrack. No second
+soundtrack or conversion of native music to WAV is needed. MD+ speed variants
+are disabled: speed shoes change physics while Addryu music keeps playing at
+normal speed. Native speed controls retain the original driver behavior.
+
+See [hybrid architecture](docs/HYBRID_AUDIO.md) for queue semantics, handoff
+ordering, RAM allocation, and the retained native 1-up limitations.
+
+## Clean Linux regression
+
+After `make bootstrap`, create a separate clean checkout of the pinned source
+and rebuild it without touching existing diagnostic checkouts:
+
+```sh
+python3 - <<'PYTHON'
+from tools.mdplus_builder.common import BUILD, SOURCE_DIR, DEPENDENCIES, load_json
+from tools.mdplus_builder.source import _clone_at, apply_mdplus, build_rom
+
+deps = load_json(DEPENDENCIES)["source"]
+clean = BUILD / "hybrid-clean"
+_clone_at(deps["url"], deps["commit"], clean, local_source=SOURCE_DIR)
+print(apply_mdplus(clean))
+print(build_rom(clean, BUILD / "hybrid-clean.md"))
+PYTHON
+```
+
+Every build also verifies the loader instructions and compares the complete
+ROM-decompressed Z80 driver against the assembled object segment. The clean
+build must match all regression values above. Use a fresh destination
+for later regression runs if that checkout already contains generated changes.
+
+For CPU-level handoff regression tests, install the optional emulation tools
+in an ignored virtual environment and use the generated ROM and map:
+
+```sh
+python3 -m venv build/emulation-venv
+build/emulation-venv/bin/pip install -e '.[emulation]'
+PYTHONPATH=. build/emulation-venv/bin/python tests/check_hybrid_binary.py \
+  build/hybrid-clean
+```
+
+These tests execute the actual loader, router, input service, Z80 dispatcher and
+VInt code. They record MD+ commands and sound-chip writes, supplementing the
+completed MiSTer verification with deterministic CPU-level regression coverage.
 
 ## Copyright
 

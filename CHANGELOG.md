@@ -9,6 +9,12 @@ Versioning for its own tooling releases.
 
 ### Added
 
+- Deterministic hybrid music: sixteen fixed Addryu cues use MD+, while other
+  cues use Sonic 2's original soundtrack. Missing Addryu WAVs never change ROM
+  routing; MD+ speed-shoes variants remain disabled.
+- Ownership-aware pause, resume, fade and stop, with an acknowledged native
+  music-only handoff that preserves SFX and consecutive MD+ transactions.
+
 - Hardware-verified Chemical Plant loop metadata (`1900 → 5500`).
 - Source-aware audio normalization with FFprobe reporting, sample-preserving
   native PCM handling, SoXR precision-33 resampling, explicit high-pass
@@ -29,6 +35,16 @@ Versioning for its own tooling releases.
 - Legal, contribution, security, conduct, and third-party documentation.
 
 ### Fixed
+
+- Process the final compressed Z80 driver byte; the first hybrid ROM otherwise
+  omitted its handoff ACK store and return, causing the first level transition
+  to fail on MiSTer. Builds now verify the entire loaded driver against assembly.
+- Move handoff completion out of `QueueToPlay` into dedicated Z80 RAM so delayed
+  68000 acknowledgement cannot starve normal SFX. Add CPU-level regression
+  coverage for the loader, handoff, VInt paths and continued SFX dispatch.
+
+- Keep the second music mailbox out of the SFX-copy loop, where the pinned
+  source otherwise writes it into the Z80 voice-table pointer.
 
 - Close the MD+ overlay immediately after every command transaction, avoiding
   corruption when live Sonic 2 code crosses the MD+ register window.

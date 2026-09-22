@@ -7,6 +7,7 @@ license = "GPL-3.0-only"
 
 [project.optional-dependencies]
 lint = ["ruff>=0.9"]
+emulation = ["unicorn==2.1.4", "z80==1.2.0"]
 
 [project.scripts]
 sonic2-mdplus = "tools.mdplus_builder.cli:main"
@@ -20,3 +21,6 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM"]
+
+[tool.setuptools.package-data]
+"tools.mdplus_builder" = ["*.asm"]
