@@ -9,6 +9,9 @@ Versioning for its own tooling releases.
 
 ### Changed
 
+- Enable Aquatic Ruin Zone MD+ track 07 with the hardware-verified sector
+  `828 → 4284` loop.
+
 - Replace `as-sonic` with pinned maintained ASL 1.42 build 306, with bounded
   source syntax conversion preserving the exact hardware-verified ROM hash.
 
