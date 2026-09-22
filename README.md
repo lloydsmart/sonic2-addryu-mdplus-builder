@@ -1,11 +1,16 @@
-# Sonic 2 — Addryu Mega-CD Remix MD+ builder
+# Sonic 2 MD+ Forge
 
-[![CI](https://github.com/lloydsmart/sonic2-addryu-mdplus-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/lloydsmart/sonic2-addryu-mdplus-builder/actions/workflows/ci.yml)
+[![CI](https://github.com/lloydsmart/sonic2-mdplus-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/lloydsmart/sonic2-mdplus-forge/actions/workflows/ci.yml)
 
-This project reproducibly builds a hybrid Sonic 2 MD+/native music ROM and
-turns user-supplied Addryu WAVs into a MiSTer-ready directory. It does **not**
-contain or distribute a ROM, Sega assets, the Addryu soundtrack, or proprietary
-binaries.
+Sonic 2 MD+ Forge is a reproducible build system for creating MD+ variants of
+Sonic the Hedgehog 2 for the Mega Drive. It combines external soundtrack
+arrangements with original Mega Drive audio where appropriate. The first and
+currently supported soundtrack is Addryu's Sonic the Hedgehog 2 Mega-CD Remix;
+the architecture is intended to allow additional soundtrack variants in future,
+but no other profiles are currently supported.
+
+The project does **not** contain or distribute a ROM, Sega assets, the Addryu
+soundtrack, or proprietary binaries.
 
 ## Support Addryu — buy the soundtrack
 
