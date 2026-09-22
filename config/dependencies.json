@@ -4,7 +4,7 @@
     "commit": "23d24dda3758a1fd341c01e7f7e94e11780a2608"
   },
   "assembler": {
-    "url": "https://github.com/Clownacy/as-sonic.git",
-    "commit": "534125a9b90f1378a40e088fa2c018aac32e837f"
+    "url": "https://github.com/Macroassembler-AS/asl-releases.git",
+    "commit": "c7155b4fd3d33110f0eb098dede4295a8c008772"
   }
 }

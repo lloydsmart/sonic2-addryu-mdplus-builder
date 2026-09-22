@@ -15,7 +15,7 @@ DIST = ROOT / "dist"
 DEPENDENCIES = ROOT / "config" / "dependencies.json"
 DEFAULT_MANIFEST = ROOT / "config" / "tracks.json"
 SOURCE_DIR = BUILD / "source"
-ASSEMBLER_DIR = BUILD / "as-sonic"
+ASSEMBLER_DIR = BUILD / "asl"
 AUDIO_DIR = BUILD / "audio"
 ROM_PATH = BUILD / "sonic2-mdplus.md"
 

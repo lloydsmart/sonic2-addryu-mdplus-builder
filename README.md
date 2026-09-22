@@ -38,7 +38,7 @@ their loop points have been measured and hardware-tested.
 ## What the build does
 
 1. Fetches exact, pinned revisions of ArcadeTV's Sonic 2 MSU-MD source and the
-   Sonic-compatible AS assembler.
+   maintained Macroassembler AS (ASL) release.
 2. Builds the assembler locally from source.
 3. Deterministically removes the Mega-CD bootstrap/polling/seek path, replaces
    playback with MD+ commands, and wraps every command in a short-lived MD+
@@ -110,6 +110,35 @@ make audio INPUT_DIR="$PWD/inputs/audio"
 make package
 make test
 ```
+
+## Assembler toolchain
+
+The assembler is ASL 1.42 build 306 from
+[Macroassembler-AS/asl-releases](https://github.com/Macroassembler-AS/asl-releases),
+pinned to commit `c7155b4fd3d33110f0eb098dede4295a8c008772` in
+`config/dependencies.json`. Bootstrap builds its unmodified source with the
+portable `Makefile.def.tmpl` and `make binaries` under ignored `build/asl/`.
+No system-wide assembler installation is required.
+
+Existing checkouts can run `make bootstrap`, `make source`, and `make rom`.
+The previous `build/as-sonic/` directory is unused and can remain in place;
+there is no need to delete audio or other build inputs. Preparation accepts
+the previous production conversion and upgrades it deterministically, while
+still rejecting unexpected source edits.
+
+The pinned Sonic source predates current ASL semantics. Preparation balances
+replacement RAM `PHASE` sections, checks RAM usage without relying on 32-bit
+counter wraparound, makes word-sized RAM operands explicit, and parenthesizes
+ambiguous anonymous-label expressions. These are syntax compatibility changes;
+the source revision, upstream build script, Sonic object converter/compressor,
+pointer fixups, and header fixer remain unchanged.
+
+Clean builds with the old and new assemblers produce the same complete ROM
+SHA-256 listed below, including the compressed Z80 driver. The nine CPU-level
+tests described below provide additional regression coverage. ASL reports legacy-source warnings, including
+implicit sign extension for
+`moveq` operands; these do not change the verified output. The migration does not establish a new ROM baseline
+or claim a new hardware test.
 
 ## Audio normalization policy
 

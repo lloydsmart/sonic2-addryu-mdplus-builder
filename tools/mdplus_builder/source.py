@@ -171,6 +171,7 @@ EXPECTED_CONVERSION_COUNTS = {
 }
 # Hashes are of UTF-8 source with LF newlines at the immutable dependency pin.
 UPSTREAM_HASHES = {
+    "s2.macros.asm": "e2d1d1088abf377a6e20b888aab3a1e6815e6aea450884854c8bb5c9a11ffef6",
     "msu-md.asm": "724b846275876b823a59f5f41cc3d38a3976a75c4cecdf8f7f682e91bc73d288",
     "s2.asm": "566a6a88517444ab4eec5c79f4b47fa5091e630cfbae7b1736cff42144fe8fda",
     "s2.constants.asm": "597b9bca0b9f7f563dbda51d1f7fc1131ab07480d88a5e6d492cc5c2449d139e",
@@ -313,6 +314,102 @@ zHybridAck: ds.b 1 ; outside stock track memory, including the 1-up backup
     extension = Path(__file__).with_name("hybrid_z80.asm").read_text(encoding="utf-8")
     return _replace_exact(text, "; end of Z80 'ROM'", extension + "\n; end of Z80 'ROM'")
 
+def _asl_constants_source(text: str) -> str:
+    # Current ASL nests PHASE; the old source used it to replace the last phase.
+    text, count = re.subn(r"(?m)^\tphase\t(?!ramaddr\(\$FFFF0000\))", "\tdephase\n\tphase\t", text)
+    if count != 12:
+        raise BuildError(f"Expected 12 replacement RAM phases, got {count}")
+    text = _replace_exact(text, "if * > 0\t; Don't declare more space than the RAM can contain!",
+                          "if (*-RAM_Start) > $10000\t; Don't declare more space than the RAM can contain!")
+    return _replace_exact(text, r"large by $\{*} bytes.", r"large by $\{(*-RAM_Start)-$10000} bytes.")
+
+
+# Only these upstream RAM addresses are intentionally stored/compared as words.
+RAM_WORD_SYMBOLS = (
+    'CNZ_Visible_bumpers_start',
+    'CNZ_Visible_bumpers_start_P2',
+    'Camera_BG2_copy',
+    'Camera_BG3_copy',
+    'Camera_BG_copy',
+    'Camera_Min_X_pos',
+    'Camera_P2_copy',
+    'Camera_RAM_copy',
+    'Camera_X_pos',
+    'Camera_X_pos_P2',
+    'Camera_X_pos_coarse',
+    'Camera_X_pos_coarse_P2',
+    'Camera_X_pos_diff',
+    'Camera_X_pos_diff_P2',
+    'Camera_X_pos_last',
+    'Camera_X_pos_last_P2',
+    'Camera_Y_pos_bias',
+    'Camera_Y_pos_bias_P2',
+    'Ctrl_1_Held',
+    'Ctrl_2_Held',
+    'Dynamic_Object_RAM_End',
+    'Horiz_block_crossed_flag',
+    'Horiz_block_crossed_flag_P2',
+    'Horiz_scroll_delay_val',
+    'Horiz_scroll_delay_val_P2',
+    'MainCharacter',
+    'Normal_palette',
+    'Obj_load_addr_2',
+    'Obj_load_addr_right',
+    'Obj_respawn_index',
+    'Obj_respawn_index_P2',
+    'Object_RAM',
+    'Ring_start_addr',
+    'Ring_start_addr_P2',
+    'SS_Dynamic_Object_RAM_End',
+    'Scroll_flags',
+    'Scroll_flags_P2',
+    'Scroll_flags_copy',
+    'Scroll_flags_copy_P2',
+    'Sidekick',
+    'Sonic_Dust',
+    'Sonic_Pos_Record_Buf',
+    'Sonic_top_speed',
+    'Tails_Min_X_pos',
+    'Tails_Pos_Record_Buf',
+    'Tails_top_speed',
+    'TitleCard_ZoneName',
+    'VDP_Command_Buffer_Slot',
+)
+
+
+def _asl_word_operands(text: str) -> tuple[str, int]:
+    pattern = re.compile(r"^(\s*)((?:" + "|".join(RAM_WORD_SYMBOLS) + r")(?:\+(?:x_pos|\$10))?)(\s*)$")
+    count = 0
+    lines = []
+    for line in text.splitlines(keepends=True):
+        code, separator, comment = line.partition(";")
+        if re.search(r"\b(?:dc|cmpa|move|subi)\.w\s", code):
+            # Explicit low words preserve legacy 32-bit signed truncation.
+            # Restrict instruction changes to immediate operands; DC has none.
+            match = re.search(r"\bdc\.w\s+(.+)|#([^,]+)", code)
+            if match:
+                start, end = match.span(1 if match[1] is not None else 2)
+                operands = code[start:end].split(",")
+                hits = 0
+                for index, operand in enumerate(operands):
+                    operands[index], hit = pattern.subn(r"\1((\2)&$FFFF)\3", operand)
+                    hits += hit
+                operand = ",".join(operands)
+                code = code[:start] + operand + code[end:]
+                count += hits
+        lines.append(code + separator + comment)
+    return "".join(lines), count
+
+
+def _asl_s2_source(text: str) -> str:
+    text, count = _asl_word_operands(text)
+    if count != 85:
+        raise BuildError(f"Expected 85 word-sized RAM operands, got {count}")
+    text, count = re.subn(r"(?<!\+)(\+{1,2})\(pc,d2\.w\)", r"(\1)(pc,d2.w)", text)
+    if count != 5:
+        raise BuildError(f"Expected 5 anonymous indexed labels, got {count}")
+    return text
+
 
 def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
     if not (source_dir / ".git").exists():
@@ -333,7 +430,11 @@ def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
     legacy_msu, legacy_counts = _convert_msu_source(originals["msu-md.asm"])
     outputs = {
         "msu-md.asm": _hybrid_msu_source(),
-        "s2.asm": _hybrid_s2_source(originals["s2.asm"]),
+        "s2.asm": _asl_s2_source(_hybrid_s2_source(originals["s2.asm"])),
+        "s2.constants.asm": _asl_constants_source(originals["s2.constants.asm"]),
+        "s2.macros.asm": _replace_exact(originals["s2.macros.asm"],
+                                        "dc.ATTRIBUTE ptr-current_offset_table",
+                                        "dc.ATTRIBUTE (ptr)-current_offset_table"),
         "s2.sounddriver.asm": _hybrid_z80_source(originals["s2.sounddriver.asm"]),
     }
     counts = {**legacy_counts, **_audit_mdplus_transactions(outputs["msu-md.asm"])}
@@ -352,6 +453,7 @@ def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
             accepted.add(legacy_msu)
         if name == "s2.asm":
             accepted.add(_legacy_s2_source(originals[name]))
+            accepted.add(_hybrid_s2_source(originals[name]))
         if current not in accepted:
             raise BuildError(f"Source checkout has unexpected content: {name}")
     script = source_dir / "build.sh"
