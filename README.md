@@ -30,9 +30,10 @@ not download audio; you supply your own legitimately purchased files.
 Current status: the hybrid ROM is reproducible and hardware-verified on MiSTer.
 Native title/menu music, temporary native cues, native SFX alongside MD+ BGM,
 pause/resume, fades, and progression through Emerald Hill, Chemical Plant and
-Aquatic Ruin have been tested. Emerald Hill's sector `292 → 3892` loop and
-Chemical Plant's sector `1900 → 5500` loop have been verified as seamless on
-MiSTer. The other Addryu tracks are mapped but deliberately disabled until
+Aquatic Ruin have been tested. Emerald Hill's sector `292 → 3892`, Chemical
+Plant's sector `1900 → 5500`, and Aquatic Ruin's sector `828 → 4284` loops
+have been verified as seamless
+on MiSTer. The other Addryu tracks are mapped but deliberately disabled until
 their loop points have been measured and hardware-tested.
 
 ## What the build does
@@ -74,6 +75,7 @@ ignored directory:
 inputs/audio/
   Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 01 Emerald Hill Zone.wav
   Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 02 Chemical Plant Zone.wav
+  Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 03 Aquatic Ruin Zone.wav
 ```
 
 Run:
@@ -83,7 +85,7 @@ make doctor
 make all INPUT_DIR="$PWD/inputs/audio"
 ```
 
-The initial manifest builds the two hardware-verified stage tracks at:
+The default manifest builds the three hardware-verified stage tracks at:
 
 ```text
 dist/Sonic 2 - Addryu Mega-CD Remix MD+/
@@ -91,6 +93,7 @@ dist/Sonic 2 - Addryu Mega-CD Remix MD+/
   Sonic 2 - Addryu Mega-CD Remix MD+.cue
   track03.wav
   track05.wav
+  track07.wav
   SHA256SUMS.json
 ```
 
@@ -214,8 +217,8 @@ verification.
 The [sixteen Addryu cues](docs/TRACKS.md#fixed-rom-routing) are fixed in the ROM,
 independent of manifest flags, CUE contents, and files on disk. Missing WAVs for
 those cues are incomplete-package errors; they never select native music.
-The default two-track package is deliberately a partial hardware test package.
-It does not provide the other fourteen Addryu-owned cues.
+The default three-track package is deliberately a partial hardware test package.
+It does not provide the other thirteen Addryu-owned cues.
 
 Unarranged cues, including title/options, bosses, invincibility, drowning, act
 clear, ending and credits, use the original Sonic 2 soundtrack. No second

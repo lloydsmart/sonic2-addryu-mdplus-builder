@@ -11,6 +11,7 @@ The checked-in manifest enables only loops that have been tested end to end:
 | --- | ---: | ---: | ---: | --- |
 | 01 Emerald Hill Zone | 03 | 292 | 3892 | Seamless on MiSTer |
 | 02 Chemical Plant Zone | 05 | 1900 | 5500 | Seamless on MiSTer |
+| 03 Aquatic Ruin Zone | 07 | 828 | 4284 | Seamless on MiSTer |
 
 The remaining album-to-game mappings are recorded in `config/tracks.json`, but
 remain disabled with `pending` verification. This prevents an unmeasured or
@@ -47,7 +48,7 @@ The native 1-up jingle ducks MD+ without changing music ownership.
 
 An absent WAV for any of the sixteen IDs is an incomplete-package error and
 never triggers native fallback. Disabled entries remain MD+-owned in the ROM;
-the default package intentionally supports only the two verified Addryu cues.
+the default package intentionally supports only the three verified Addryu cues.
 
 ## Finding the next loop
 
