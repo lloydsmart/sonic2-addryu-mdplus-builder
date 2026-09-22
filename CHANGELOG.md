@@ -7,6 +7,11 @@ Versioning for its own tooling releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Rename the project to Sonic 2 MD+ Forge and make its positioning ready for
+  additional soundtrack variants without changing the current Addryu profile.
+
 ### Added
 
 - Deterministic hybrid music: sixteen fixed Addryu cues use MD+, while other

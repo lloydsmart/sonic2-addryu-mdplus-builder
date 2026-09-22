@@ -36,7 +36,7 @@ def _path(value: str) -> Path:
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
         prog="sonic2-mdplus",
-        description="Build a legal, reproducible Sonic 2 Addryu MD+ package from user-supplied inputs.",
+        description="Build legal, reproducible Sonic the Hedgehog 2 MD+ variants from user-supplied inputs.",
     )
     commands = root.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="check required host programs")

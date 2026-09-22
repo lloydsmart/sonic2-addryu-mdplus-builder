@@ -1,7 +1,7 @@
 [project]
-name = "sonic2-addryu-mdplus-builder"
+name = "sonic2-mdplus-forge"
 version = "0.1.0"
-description = "Reproducible tooling for a user-built Sonic 2 Addryu MD+ package"
+description = "Reproducible build system for Sonic the Hedgehog 2 MD+ soundtrack variants"
 requires-python = ">=3.10"
 license = "GPL-3.0-only"
 

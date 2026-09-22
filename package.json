@@ -1,5 +1,5 @@
 {
-  "name": "sonic2-addryu-mdplus-builder-dev",
+  "name": "sonic2-mdplus-forge-dev",
   "private": true,
   "scripts": {
     "lint:markdown": "markdownlint-cli2"
