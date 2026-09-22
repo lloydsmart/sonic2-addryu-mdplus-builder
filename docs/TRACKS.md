@@ -5,11 +5,12 @@ sample frames per sector at 44.1 kHz. Every looping output is therefore trimmed
 to exactly `loop_end_sector * 588` frames, and its CUE entry contains
 `REM LOOP loop_start_sector`.
 
-The checked-in manifest enables only the loop that has been tested end to end:
+The checked-in manifest enables only loops that have been tested end to end:
 
 | Addryu album track | Sonic/MD+ track | Loop start | Loop end | Result |
 | --- | ---: | ---: | ---: | --- |
 | 01 Emerald Hill Zone | 03 | 292 | 3892 | Seamless on MiSTer |
+| 02 Chemical Plant Zone | 05 | 1900 | 5500 | Seamless on MiSTer |
 
 The remaining album-to-game mappings are recorded in `config/tracks.json`, but
 remain disabled with `pending` verification. This prevents an unmeasured or
@@ -17,8 +18,13 @@ guessed loop from silently entering a release build.
 
 ## Finding the next loop
 
-First convert a working copy to 44.1 kHz, 16-bit stereo PCM, then search a
-bounded region for repeated sector-aligned boundaries. For example:
+First normalize a working copy, then search a bounded region for repeated
+sector-aligned boundaries. The conversion command accepts the original source
+audio and applies the policy documented in the README: native 44.1 kHz,
+16-bit stereo PCM is copied without resampling, while other rates use SoXR at
+precision 33 and bit-depth reduction uses explicit high-pass triangular
+dithering. Sector alignment is calculated in the final 44.1 kHz domain. For
+example:
 
 ```sh
 python3 -m tools.mdplus_builder convert-audio \

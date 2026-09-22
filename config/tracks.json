@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "rom_basename": "Sonic 2 - Addryu Mega-CD Remix MD+",
-  "notes": "Only track 03 is enabled because its loop has been verified on MiSTer. Define and verify the remaining loop boundaries before enabling them.",
+  "notes": "Tracks 03 and 05 are enabled because their loops have been verified on MiSTer. Define and verify the remaining loop boundaries before enabling them.",
   "tracks": [
     {
       "track": 3,
@@ -17,11 +17,11 @@
       "track": 5,
       "name": "Chemical Plant Zone",
       "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 02 Chemical Plant Zone.wav",
-      "enabled": false,
+      "enabled": true,
       "mode": "loop",
-      "loop_start_sector": null,
-      "loop_end_sector": null,
-      "verification": "pending"
+      "loop_start_sector": 1900,
+      "loop_end_sector": 5500,
+      "verification": "mister-hardware"
     },
     {
       "track": 7,
