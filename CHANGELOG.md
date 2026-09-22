@@ -9,6 +9,9 @@ Versioning for its own tooling releases.
 
 ### Changed
 
+- Replace `as-sonic` with pinned maintained ASL 1.42 build 306, with bounded
+  source syntax conversion preserving the exact hardware-verified ROM hash.
+
 - Rename the project to Sonic 2 MD+ Forge and make its positioning ready for
   additional soundtrack variants without changing the current Addryu profile.
 

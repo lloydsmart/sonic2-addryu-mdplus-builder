@@ -14,10 +14,11 @@ The project applies a deterministic MD+ conversion to a temporary checkout.
 The dependency may contain material whose rights are not granted merely by its
 repository license; users remain responsible for lawful use.
 
-## Clownacy/as-sonic
+## Macroassembler-AS/asl-releases
 
-- Repository: <https://github.com/Clownacy/as-sonic>
-- Pinned commit: `534125a9b90f1378a40e088fa2c018aac32e837f`
+- Repository: <https://github.com/Macroassembler-AS/asl-releases>
+- Pinned commit: `c7155b4fd3d33110f0eb098dede4295a8c008772`
+- Release: ASL 1.42 build 306 (`asl-current-142-bld306`)
 - Declared repository license: GNU General Public License version 2
 
 The assembler is fetched and built as a separate executable. It is not linked
