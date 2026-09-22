@@ -47,10 +47,10 @@
       "track": 9,
       "name": "Hill Top Zone",
       "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 05 Hill Top Zone.wav",
-      "enabled": false,
+      "enabled": true,
       "mode": "loop",
-      "loop_start_sector": null,
-      "loop_end_sector": null,
+      "loop_start_sector": 1063,
+      "loop_end_sector": 4557,
       "verification": "pending"
     },
     {
