@@ -97,10 +97,10 @@
       "track": 14,
       "name": "Wing Fortress Zone",
       "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 10 Wing Fortress Zone.wav",
-      "enabled": false,
+      "enabled": true,
       "mode": "loop",
-      "loop_start_sector": null,
-      "loop_end_sector": null,
+      "loop_start_sector": 1874,
+      "loop_end_sector": 5474,
       "verification": "pending"
     },
     {
