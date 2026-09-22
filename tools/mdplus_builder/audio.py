@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
 import math
+import subprocess
+import tempfile
 import wave
 from array import array
+from dataclasses import dataclass
 from pathlib import Path
 
 from .common import AUDIO_DIR, BuildError, load_json, require_program, run, sha256
@@ -11,6 +15,205 @@ RATE = 44_100
 CHANNELS = 2
 WIDTH = 2
 FRAMES_PER_SECTOR = 588
+
+
+@dataclass(frozen=True)
+class AudioConversionPlan:
+    sample_rate_conversion: bool
+    channel_conversion: bool
+    channel_conversion_method: str | None
+    format_or_codec_conversion: bool
+    precision_reduction: bool
+    precision_expansion: bool
+    native_signed_16_bit_pcm: bool
+    resampler: str | None
+    soxr_precision: int | None
+    dither: str | None
+    speed: float
+    filters: tuple[str, ...]
+
+
+def _reported_positive_int(value: object) -> int | None:
+    try:
+        result = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return result if result > 0 else None
+
+
+def probe_audio(path: Path) -> dict[str, int | str | None]:
+    if not path.is_file():
+        raise BuildError(f"Input file not found: {path}")
+    ffprobe = require_program("ffprobe")
+
+    try:
+        completed = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                (
+                    "stream=codec_name,sample_fmt,sample_rate,channels,channel_layout,"
+                    "bits_per_sample,bits_per_raw_sample:format=format_name"
+                ),
+                "-of",
+                "json",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or str(exc)
+        raise BuildError(f"Unable to probe audio file {path}: {detail}") from exc
+    except OSError as exc:
+        raise BuildError(f"Unable to probe audio file {path}: {exc}") from exc
+
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise BuildError(f"Unable to probe audio file {path}: ffprobe returned invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise BuildError(f"Unable to probe audio file {path}: ffprobe returned malformed data")
+    streams = payload.get("streams", [])
+    if not isinstance(streams, list) or len(streams) != 1 or not isinstance(streams[0], dict):
+        count = len(streams) if isinstance(streams, list) else 0
+        raise BuildError(f"{path}: expected an audio stream, found {count}")
+
+    stream = streams[0]
+    format_info = payload.get("format", {})
+    container_format = (
+        str(format_info.get("format_name") or "unknown")
+        if isinstance(format_info, dict)
+        else "unknown"
+    )
+    try:
+        sample_rate = int(stream["sample_rate"])
+        channels = int(stream["channels"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise BuildError(f"{path}: ffprobe did not report a usable sample rate/channel count") from exc
+
+    if sample_rate <= 0 or channels <= 0:
+        raise BuildError(f"{path}: ffprobe reported an invalid sample rate/channel count")
+
+    sample_format = str(stream.get("sample_fmt") or "unknown")
+    bits_per_sample = _reported_positive_int(stream.get("bits_per_sample"))
+    bits_per_raw_sample = _reported_positive_int(stream.get("bits_per_raw_sample"))
+
+    inferred_bits = {
+        "u8": 8,
+        "u8p": 8,
+        "s16": 16,
+        "s16p": 16,
+        "s32": 32,
+        "s32p": 32,
+        "s64": 64,
+        "s64p": 64,
+        "flt": 32,
+        "fltp": 32,
+        "dbl": 64,
+        "dblp": 64,
+    }.get(sample_format)
+    effective_bit_depth = bits_per_raw_sample or bits_per_sample or inferred_bits
+
+    return {
+        "codec": str(stream.get("codec_name") or "unknown"),
+        "container_format": container_format,
+        "sample_format": sample_format,
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "channel_layout": str(stream.get("channel_layout") or "unknown"),
+        "bits_per_sample": bits_per_sample,
+        "bits_per_raw_sample": bits_per_raw_sample,
+        "effective_bit_depth": effective_bit_depth,
+    }
+
+
+def build_conversion_plan(
+    source_info: dict[str, int | str | None],
+    *,
+    end_sector: int | None = None,
+    speed: float = 1.0,
+) -> AudioConversionPlan:
+    if not 0.5 <= speed <= 2.0:
+        raise BuildError("Speed must be between 0.5 and 2.0")
+    if end_sector is not None and end_sector <= 0:
+        raise BuildError("End sector must be positive")
+
+    sample_rate = int(source_info["sample_rate"])
+    channels = int(source_info["channels"])
+    if channels > CHANNELS:
+        raise BuildError(
+            f"Source has {channels} channels; only mono or stereo input is supported "
+            "because no surround downmix policy is defined"
+        )
+
+    codec = str(source_info["codec"])
+    sample_format = str(source_info["sample_format"])
+    effective_bit_depth = source_info["effective_bit_depth"]
+    native_signed_16_bit_pcm = (
+        codec in {"pcm_s16le", "pcm_s16be"}
+        and sample_format in {"s16", "s16p"}
+        and effective_bit_depth == WIDTH * 8
+    )
+    sample_rate_conversion = sample_rate != RATE
+    channel_conversion = channels != CHANNELS
+    format_or_codec_conversion = not (
+        codec == "pcm_s16le"
+        and sample_format in {"s16", "s16p"}
+        and effective_bit_depth == WIDTH * 8
+    )
+    floating_point_source = sample_format in {"flt", "fltp", "dbl", "dblp"}
+    precision_reduction = floating_point_source or (
+        isinstance(effective_bit_depth, int) and effective_bit_depth > WIDTH * 8
+    )
+    precision_expansion = (
+        not floating_point_source
+        and isinstance(effective_bit_depth, int)
+        and effective_bit_depth < WIDTH * 8
+    )
+    speed_conversion = speed != 1.0
+    dither_required = precision_reduction or sample_rate_conversion or speed_conversion
+
+    filters: list[str] = []
+    if speed_conversion:
+        filters.append(f"atempo={speed:.17g}")
+
+    if dither_required:
+        options = [f"osr={RATE}", "osf=s16"]
+        if sample_rate_conversion:
+            options.extend(("resampler=soxr", "precision=33"))
+        options.append("dither_method=triangular_hp")
+        filters.append("aresample=" + ":".join(options))
+    elif sample_format not in {"s16", "s16p"}:
+        filters.append("aformat=sample_fmts=s16")
+
+    if channel_conversion:
+        filters.append("pan=stereo|c0=c0|c1=c0")
+
+    if end_sector is not None:
+        filters.append(f"atrim=end_sample={end_sector * FRAMES_PER_SECTOR}")
+    if filters:
+        filters.append("asetpts=PTS-STARTPTS")
+
+    return AudioConversionPlan(
+        sample_rate_conversion=sample_rate_conversion,
+        channel_conversion=channel_conversion,
+        channel_conversion_method="duplicate_mono" if channel_conversion else None,
+        format_or_codec_conversion=format_or_codec_conversion,
+        precision_reduction=precision_reduction,
+        precision_expansion=precision_expansion,
+        native_signed_16_bit_pcm=native_signed_16_bit_pcm,
+        resampler="soxr" if sample_rate_conversion else None,
+        soxr_precision=33 if sample_rate_conversion else None,
+        dither="triangular_hp" if dither_required else None,
+        speed=speed,
+        filters=tuple(filters),
+    )
 
 
 def _track_name(number: int) -> str:
@@ -50,6 +253,9 @@ def validate_wave(path: Path, *, end_sector: int | None = None) -> dict[str, int
             f"{path}: has {info['frames']} frames, expected {end_sector * FRAMES_PER_SECTOR}"
         )
     info["sectors"] = int(info["frames"]) // FRAMES_PER_SECTOR
+    info["codec"] = "pcm_s16le"
+    info["sample_format"] = "s16"
+    info["bits_per_sample"] = WIDTH * 8
     info["sha256"] = sha256(path)
     return info
 
@@ -80,50 +286,202 @@ def validate_manifest(manifest_path: Path) -> dict:
     return manifest
 
 
+def _copy_wave_frames(source_path: Path, destination: Path, keep_frames: int) -> None:
+    with tempfile.NamedTemporaryFile(
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
+        suffix=".tmp.wav",
+        delete=False,
+    ) as temporary_handle:
+        temporary = Path(temporary_handle.name)
+    try:
+        with wave.open(str(source_path), "rb") as source, wave.open(str(temporary), "wb") as target:
+            target.setnchannels(source.getnchannels())
+            target.setsampwidth(source.getsampwidth())
+            target.setframerate(source.getframerate())
+            target.setcomptype(source.getcomptype(), source.getcompname())
+
+            bytes_per_frame = source.getnchannels() * source.getsampwidth()
+            remaining = keep_frames
+            while remaining:
+                requested = min(remaining, 65_536)
+                data = source.readframes(requested)
+                if not data:
+                    raise BuildError(f"{source_path}: unexpected end of WAV while copying")
+                frames_read = len(data) // bytes_per_frame
+                if frames_read != requested or len(data) % bytes_per_frame:
+                    raise BuildError(f"{source_path}: incomplete PCM frame data")
+                target.writeframesraw(data)
+                remaining -= frames_read
+
+        temporary.replace(destination)
+    except (OSError, wave.Error) as exc:
+        raise BuildError(f"Unable to copy PCM WAV {source_path}: {exc}") from exc
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _copy_native_wave(source: Path, destination: Path, end_sector: int | None) -> int:
+    info = inspect_wave(source)
+    expected = {
+        "channels": CHANNELS,
+        "sample_width": WIDTH,
+        "sample_rate": RATE,
+        "compression": "NONE",
+    }
+    if any(info[key] != value for key, value in expected.items()):
+        raise BuildError(f"{source}: ffprobe and WAV properties disagree about native PCM format")
+
+    frames = int(info["frames"])
+    keep_frames = end_sector * FRAMES_PER_SECTOR if end_sector is not None else frames - frames % FRAMES_PER_SECTOR
+    if keep_frames > frames:
+        raise BuildError(f"{source}: has {frames} frames, fewer than the requested {keep_frames}")
+    _copy_wave_frames(source, destination, keep_frames)
+    return frames - keep_frames if end_sector is None else 0
+
+
+def _trim_to_whole_sectors(path: Path) -> int:
+    frames = int(inspect_wave(path)["frames"])
+    remainder = frames % FRAMES_PER_SECTOR
+    if remainder:
+        _copy_wave_frames(path, path, frames - remainder)
+    return remainder
+
+
+def _is_direct_copy_wave(
+    path: Path,
+    plan: AudioConversionPlan,
+    source_info: dict[str, int | str | None],
+) -> bool:
+    if (
+        source_info["codec"] != "pcm_s16le"
+        or not plan.native_signed_16_bit_pcm
+        or plan.channel_conversion
+        or plan.sample_rate_conversion
+        or plan.speed != 1.0
+    ):
+        return False
+    try:
+        info = inspect_wave(path)
+    except BuildError:
+        return False
+    return (
+        info["channels"] == CHANNELS
+        and info["sample_width"] == WIDTH
+        and info["sample_rate"] == RATE
+        and info["compression"] == "NONE"
+    )
+
+
+def check_ffmpeg_audio_capabilities() -> dict[str, str | int | bool]:
+    ffmpeg = require_program("ffmpeg")
+    ffprobe = require_program("ffprobe")
+    command = [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "aevalsrc=sin(2*PI*997*t):s=48000:d=0.02",
+        "-af",
+        (
+            f"aresample=osr={RATE}:osf=s16:resampler=soxr:precision=33:"
+            "dither_method=triangular_hp"
+        ),
+        "-f",
+        "null",
+        "-",
+    ]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or str(exc)
+        raise BuildError(
+            "FFmpeg audio capability check failed; SoXR with precision=33 and "
+            f"triangular_hp dithering is required: {detail}"
+        ) from exc
+    except OSError as exc:
+        raise BuildError(f"Unable to run FFmpeg audio capability check: {exc}") from exc
+    return {
+        "ffmpeg": ffmpeg,
+        "ffprobe": ffprobe,
+        "soxr": True,
+        "soxr_precision": 33,
+        "dither": "triangular_hp",
+    }
+
+
 def convert_audio_file(
     source: Path,
     destination: Path,
     *,
     end_sector: int | None = None,
     speed: float = 1.0,
-) -> dict[str, int | str]:
-    require_program("ffmpeg")
+) -> dict:
     if not source.is_file():
         raise BuildError(f"Input file not found: {source}")
-    if not 0.5 <= speed <= 2.0:
-        raise BuildError("Speed must be between 0.5 and 2.0")
-    if end_sector is not None and end_sector <= 0:
-        raise BuildError("End sector must be positive")
+    if source.suffix.lower() != ".wav":
+        raise BuildError(f"Source audio must be a WAV file with a .wav extension: {source}")
+    source_info = probe_audio(source)
+    if source_info["container_format"] != "wav":
+        raise BuildError(
+            f"Source audio must be a WAV file; ffprobe identified "
+            f"{source_info['container_format']!r}: {source}"
+        )
+    plan = build_conversion_plan(source_info, end_sector=end_sector, speed=speed)
+    if source.resolve() == destination.resolve():
+        raise BuildError("Input and output audio paths must be different")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    # Sector/sample arithmetic is defined at the final MD+ format. Normalize
-    # rate and channel layout before speed changes or sample-count trimming.
-    filters = ["aresample=44100", "aformat=sample_fmts=s16:channel_layouts=stereo"]
-    if not math.isclose(speed, 1.0):
-        filters.append(f"atempo={speed:.10g}")
-    if end_sector is not None:
-        filters.append(f"atrim=end_sample={end_sector * FRAMES_PER_SECTOR}")
-    filters.append("asetpts=PTS-STARTPTS")
-    run(
-        [
-            "ffmpeg",
+
+    if _is_direct_copy_wave(source, plan, source_info):
+        discarded_frames = _copy_native_wave(source, destination, end_sector)
+        method = "direct_pcm_wave_copy"
+    else:
+        ffmpeg = require_program("ffmpeg")
+        command: list[str | Path] = [
+            ffmpeg,
             "-hide_banner",
             "-loglevel",
             "error",
             "-y",
             "-i",
             source,
-            "-af",
-            ",".join(filters),
-            "-ar",
-            str(RATE),
-            "-ac",
-            str(CHANNELS),
-            "-c:a",
-            "pcm_s16le",
-            destination,
+            "-map",
+            "0:a:0",
+            "-map_metadata",
+            "-1",
+            "-fflags",
+            "+bitexact",
+            "-flags:a",
+            "+bitexact",
         ]
-    )
-    return validate_wave(destination, end_sector=end_sector)
+        if plan.filters:
+            command.extend(("-af", ",".join(plan.filters)))
+        command.extend(("-c:a", "pcm_s16le", destination))
+        run(command)
+        discarded_frames = 0 if end_sector is not None else _trim_to_whole_sectors(destination)
+        method = "ffmpeg"
+
+    info = validate_wave(destination, end_sector=end_sector)
+    info["source"] = source_info
+    info["conversion"] = {
+        "method": method,
+        "sample_rate_conversion": plan.sample_rate_conversion,
+        "channel_conversion": plan.channel_conversion,
+        "channel_conversion_method": plan.channel_conversion_method,
+        "format_or_codec_conversion": plan.format_or_codec_conversion,
+        "precision_reduction": plan.precision_reduction,
+        "precision_expansion": plan.precision_expansion,
+        "resampler": plan.resampler,
+        "soxr_precision": plan.soxr_precision,
+        "dither": plan.dither,
+        "speed": plan.speed,
+        "discarded_trailing_frames": discarded_frames,
+    }
+    return info
 
 
 def prepare_audio(manifest_path: Path, input_dir: Path, output_dir: Path = AUDIO_DIR) -> list[dict]:

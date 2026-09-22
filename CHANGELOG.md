@@ -9,6 +9,10 @@ Versioning for its own tooling releases.
 
 ### Added
 
+- Hardware-verified Chemical Plant loop metadata (`1900 → 5500`).
+- Source-aware audio normalization with FFprobe reporting, sample-preserving
+  native PCM handling, SoXR precision-33 resampling, explicit high-pass
+  triangular dithering, and functional FFmpeg capability checks.
 - Markdownlint with locked development dependencies and monthly Dependabot updates.
 - File-sensitive CI lint steps for Python and Markdown, preserving the required test check.
 
@@ -23,3 +27,8 @@ Versioning for its own tooling releases.
 - Hardware-verified Emerald Hill loop metadata (`292 → 3892`).
 - Unit tests, Ruff linting, and GitHub Actions checks.
 - Legal, contribution, security, conduct, and third-party documentation.
+
+### Fixed
+
+- Close the MD+ overlay immediately after every command transaction, avoiding
+  corruption when live Sonic 2 code crosses the MD+ register window.

@@ -22,10 +22,11 @@ not download audio; you supply your own legitimately purchased files.
 
 ## Build status
 
-Current status: the ROM conversion and Emerald Hill are reproducible. Emerald
-Hill's sector `292 → 3892` loop has been verified as seamless on MiSTer. The
-other Addryu tracks are mapped but deliberately disabled until their loop
-points have been measured and hardware-tested.
+Current status: the ROM conversion, Emerald Hill, and Chemical Plant are
+reproducible. Emerald Hill's sector `292 → 3892` loop and Chemical Plant's
+sector `1900 → 5500` loop have been verified as seamless on MiSTer. The other
+Addryu tracks are mapped but deliberately disabled until their loop points
+have been measured and hardware-tested.
 
 ## What the build does
 
@@ -33,12 +34,13 @@ points have been measured and hardware-tested.
    Sonic-compatible AS assembler.
 2. Builds the assembler locally from source.
 3. Deterministically removes the Mega-CD bootstrap/polling/seek path, replaces
-   playback with MD+ commands, and delays opening the MD+ overlay until after
-   Sonic's startup checksum.
+   playback with MD+ commands, and wraps every command in a short-lived MD+
+   overlay transaction after Sonic's startup checksum.
 4. Builds the Rev 0 ROM and verifies its Mega Drive header checksum, MD+
    instruction signatures, size, and SHA-256 regression value.
-5. Converts enabled user WAVs to 44.1 kHz, 16-bit, stereo PCM, trims them on an
-   exact 75 Hz sector boundary, validates them, and generates the MD+ CUE.
+5. Normalizes enabled user source audio to 44.1 kHz, signed 16-bit stereo PCM,
+   trims it on an exact 75 Hz sector boundary, validates it, and generates the
+   MD+ CUE.
 6. Creates an ignored `dist/` directory ready to copy to MiSTer's Mega Drive
    games area.
 
@@ -62,6 +64,7 @@ ignored directory:
 ```text
 inputs/audio/
   Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 01 Emerald Hill Zone.wav
+  Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 02 Chemical Plant Zone.wav
 ```
 
 Run:
@@ -71,13 +74,14 @@ make doctor
 make all INPUT_DIR="$PWD/inputs/audio"
 ```
 
-The initial manifest builds the already-verified Emerald Hill-only package at:
+The initial manifest builds the two hardware-verified stage tracks at:
 
 ```text
 dist/Sonic 2 - Addryu Mega-CD Remix MD+/
   Sonic 2 - Addryu Mega-CD Remix MD+.md
   Sonic 2 - Addryu Mega-CD Remix MD+.cue
   track03.wav
+  track05.wav
   SHA256SUMS.json
 ```
 
@@ -97,6 +101,27 @@ make audio INPUT_DIR="$PWD/inputs/audio"
 make package
 make test
 ```
+
+## Audio normalization policy
+
+Supply the original WAV files from your lawful soundtrack download; manual
+sample-rate or bit-depth conversion is not required. The builder probes each
+source with FFprobe and normalizes it to the MD+ output format.
+
+Native 44.1 kHz, signed 16-bit stereo PCM WAVs use a sample-preserving copy and
+trim path, without resampling or dithering. Other sample rates are converted
+once with FFmpeg's SoX Resampler at precision 33. Reduction to signed 16-bit
+PCM, including conversion after a speed change, uses explicit high-pass
+triangular dithering. Expanding lower-bit integer PCM does not add dither. Mono
+input is expanded by copying each final mono sample exactly to left and right
+with no gain change; input with more than two channels is rejected rather than
+applying an unspecified downmix. Source input is intentionally WAV-only; other
+containers are rejected rather than treated as an implicit compatibility
+promise.
+
+All trimming and sector calculations occur after conversion in the final
+44.1 kHz domain. Without an explicit end sector, only complete 588-frame CD
+sectors are retained and the incomplete trailing fragment is reported.
 
 To reuse an existing clean checkout instead of downloading the Sonic source:
 
@@ -128,9 +153,10 @@ python3 -m tools.mdplus_builder verify-rom \
 Expected proven regression values:
 
 - size: `2,129,922` bytes
-- SHA-256: `1866e1a0e07da98b42c7a3d7baf34db28eb1751de388538073a669ff9afc1bd5`
-- Mega Drive checksum: `D179`
-- one MD+ overlay-open signature and one Emerald Hill track-03 signature
+- SHA-256: `b388cd875145b1c637623bd0846bd071c7fefd12b289e3912fd9dbd63a50956b`
+- Mega Drive checksum: `32E3`
+- 52 complete MD+ open/command/close signatures and one Emerald Hill track-03
+  signature
 
 ## Adding tracks and loop points
 

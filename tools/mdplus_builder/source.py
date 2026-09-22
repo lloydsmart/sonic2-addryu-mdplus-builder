@@ -9,9 +9,25 @@ from pathlib import Path
 from .common import ASSEMBLER_DIR, BUILD, DEPENDENCIES, ROM_PATH, SOURCE_DIR, BuildError, load_json, run, sha256
 
 EXPECTED_ROM_SIZE = 2_129_922
-PROVEN_SHA256 = "1866e1a0e07da98b42c7a3d7baf34db28eb1751de388538073a669ff9afc1bd5"
+PROVEN_SHA256 = "b388cd875145b1c637623bd0846bd071c7fefd12b289e3912fd9dbd63a50956b"
 OPEN_PATTERN = bytes.fromhex("33 fc cd 54 00 03 f7 fa")
+CLOSE_PATTERN = bytes.fromhex("33 fc 00 00 00 03 f7 fa")
+COMMAND_ADDRESS_PATTERN = bytes.fromhex("00 03 f7 fe")
 TRACK03_PATTERN = bytes.fromhex("33 fc 12 03 00 03 f7 fe")
+
+EXPECTED_CONVERSION_COUNTS = {
+    "definitions": 1,
+    "polls": 50,
+    "seeks": 31,
+    "clocks": 52,
+    "seamless": 31,
+    "commands": 52,
+    "overlay_opens": 52,
+    "overlay_closes": 52,
+}
+
+OVERLAY_OPEN_LINE = "move.w  #$CD54,(MDP_CTRL).l"
+OVERLAY_CLOSE_LINE = "move.w  #0,(MDP_CTRL).l"
 
 
 def _clone_at(url: str, commit: str, destination: Path, local_source: Path | None = None) -> None:
@@ -33,6 +49,96 @@ def _git_output(repo: Path, *args: str) -> str:
         return subprocess.check_output(["git", *args], cwd=repo, text=True).strip()
     except (OSError, subprocess.CalledProcessError) as exc:
         raise BuildError(f"Unable to inspect Git checkout {repo}") from exc
+
+
+def _audit_mdplus_transactions(text: str) -> dict[str, int]:
+    lines = text.splitlines()
+    command_lines = [
+        index
+        for index, line in enumerate(lines)
+        if re.match(r"^[ \t]*move\.w\b", line) and re.search(r"\bMDP_CMD\b", line)
+    ]
+    open_lines = [index for index, line in enumerate(lines) if line.strip() == OVERLAY_OPEN_LINE]
+    close_lines = [index for index, line in enumerate(lines) if line.strip() == OVERLAY_CLOSE_LINE]
+
+    for index in command_lines:
+        if index == 0 or lines[index - 1].strip() != OVERLAY_OPEN_LINE:
+            raise BuildError(f"MD+ command on source line {index + 1} is not preceded by overlay-open")
+        if index + 1 >= len(lines) or lines[index + 1].strip() != OVERLAY_CLOSE_LINE:
+            raise BuildError(f"MD+ command on source line {index + 1} is not followed by overlay-close")
+
+    play_marker = "PlayMusic:\nPlayMSU:\n"
+    if text.count(play_marker) != 1:
+        raise BuildError("Expected exactly one PlayMSU entry point")
+    if play_marker + "    " + OVERLAY_OPEN_LINE in text:
+        raise BuildError("PlayMSU still contains a persistent MD+ overlay-open")
+
+    return {
+        "commands": len(command_lines),
+        "overlay_opens": len(open_lines),
+        "overlay_closes": len(close_lines),
+    }
+
+
+def _convert_msu_source(text: str) -> tuple[str, dict[str, int]]:
+    text, definitions = re.subn(
+        r"(?m)^MCD_STAT[^\n]*\n^MCD_CMD[^\n]*\n^MCD_ARG[^\n]*\n^MCD_SEEK[^\n]*\n^MCD_CMD_CK[^\n]*\n",
+        "MDP_CTRL        = $0003F7FA\nMDP_CMD         = $0003F7FE\n",
+        text,
+        count=1,
+    )
+    text, polls = re.subn(r"(?m)^[ \t]*tst\.b[ \t]+MCD_STAT[^\n]*\n^[ \t]*bne\.s[^\n]*\n", "", text)
+    text, seeks = re.subn(r"(?m)^[ \t]*move\.l[^\n]*MCD_SEEK[^\n]*\n", "", text)
+    text, clocks = re.subn(r"(?m)^[ \t]*addq\.b[ \t]+#1,MCD_CMD_CK[^\n]*\n", "", text)
+    text, seamless = re.subn(r"#\(\$1A00\|", "#($1200|", text)
+    text, commands = re.subn(r"\bMCD_CMD\b", "MDP_CMD", text)
+
+    command_pattern = re.compile(
+        r"(?m)^(?P<indent>[ \t]*)(?P<instruction>move\.w[ \t]+(?P<command>[^,\n]+),[ \t]*)"
+        r"MDP_CMD(?P<suffix>[ \t]*(?:;[^\n]*)?)$"
+    )
+
+    def transaction(match: re.Match[str]) -> str:
+        indent = match.group("indent")
+        command_line = (
+            indent
+            + match.group("instruction")
+            + "(MDP_CMD).l"
+            + match.group("suffix")
+        )
+        return "\n".join(
+            (
+                indent + OVERLAY_OPEN_LINE,
+                command_line,
+                indent + OVERLAY_CLOSE_LINE,
+            )
+        )
+
+    text, transactions = command_pattern.subn(transaction, text)
+    if transactions != commands:
+        raise BuildError(
+            "Not every converted MD+ command became a transaction: "
+            f"commands={commands}, transactions={transactions}"
+        )
+
+    leftovers = sorted(set(re.findall(r"\bMCD_[A-Z_]+\b", text)))
+    if leftovers:
+        raise BuildError(f"Unconverted Mega-CD symbols remain: {', '.join(leftovers)}")
+
+    actual = {
+        "definitions": definitions,
+        "polls": polls,
+        "seeks": seeks,
+        "clocks": clocks,
+        "seamless": seamless,
+        **_audit_mdplus_transactions(text),
+    }
+    for key, expected in EXPECTED_CONVERSION_COUNTS.items():
+        if actual[key] != expected:
+            raise BuildError(
+                f"Conversion count changed for {key}: got {actual[key]}, expected {expected}"
+            )
+    return text, actual
 
 
 def bootstrap(*, local_source: Path | None = None, skip_assembler_build: bool = False) -> None:
@@ -59,13 +165,19 @@ def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
         already_prepared = (
             actual_status in expected_statuses
             and "MDP_CTRL        = $0003F7FA" in msu_existing
-            and "move.w  #$CD54,(MDP_CTRL).l" in msu_existing
             and not re.search(r"\bMCD_[A-Z_]+\b", msu_existing)
             and "MD+ is opened later" in s2_existing
             and 'BINCLUDE  "sound\\msu-drv-loop.bin"' not in s2_existing
         )
         if already_prepared:
-            return {"already_prepared": 1}
+            counts = _audit_mdplus_transactions(msu_existing)
+            for key, expected in EXPECTED_CONVERSION_COUNTS.items():
+                if key in counts and counts[key] != expected:
+                    raise BuildError(
+                        f"Prepared source count changed for {key}: "
+                        f"got {counts[key]}, expected {expected}"
+                    )
+            return {"already_prepared": 1, **counts}
         raise BuildError(f"Source checkout has unexpected changes: {source_dir}\n{status}")
 
     s2_path = source_dir / "s2.asm"
@@ -95,37 +207,7 @@ def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
 
     msu_path = source_dir / "msu-md.asm"
     text = msu_path.read_text(encoding="utf-8")
-    text, definitions = re.subn(
-        r"(?m)^MCD_STAT[^\n]*\n^MCD_CMD[^\n]*\n^MCD_ARG[^\n]*\n^MCD_SEEK[^\n]*\n^MCD_CMD_CK[^\n]*\n",
-        "MDP_CTRL        = $0003F7FA\nMDP_CMD         = $0003F7FE\n",
-        text,
-        count=1,
-    )
-    text, polls = re.subn(r"(?m)^[ \t]*tst\.b[ \t]+MCD_STAT[^\n]*\n^[ \t]*bne\.s[^\n]*\n", "", text)
-    text, seeks = re.subn(r"(?m)^[ \t]*move\.l[^\n]*MCD_SEEK[^\n]*\n", "", text)
-    text, clocks = re.subn(r"(?m)^[ \t]*addq\.b[ \t]+#1,MCD_CMD_CK[^\n]*\n", "", text)
-    text, seamless = re.subn(r"#\(\$1A00\|", "#($1200|", text)
-    text, commands = re.subn(r"\bMCD_CMD\b", "MDP_CMD", text)
-    play_marker = "PlayMusic:\nPlayMSU:\n"
-    if text.count(play_marker) != 1:
-        raise BuildError("Expected exactly one PlayMSU entry point")
-    text = text.replace(play_marker, play_marker + "    move.w  #$CD54,(MDP_CTRL).l\n", 1)
-    leftovers = sorted(set(re.findall(r"\bMCD_[A-Z_]+\b", text)))
-    if leftovers:
-        raise BuildError(f"Unconverted Mega-CD symbols remain: {', '.join(leftovers)}")
-
-    expected = {"definitions": 1, "polls": 50, "seeks": 31, "clocks": 52, "seamless": 31}
-    actual = {
-        "definitions": definitions,
-        "polls": polls,
-        "seeks": seeks,
-        "clocks": clocks,
-        "seamless": seamless,
-        "commands": commands,
-    }
-    for key, value in expected.items():
-        if actual[key] != value:
-            raise BuildError(f"Conversion count changed for {key}: got {actual[key]}, expected {value}")
+    text, actual = _convert_msu_source(text)
     msu_path.write_text(text, encoding="utf-8", newline="\n")
 
     build_script = source_dir / "build.sh"
@@ -149,9 +231,14 @@ def verify_rom(path: Path, *, strict_regression: bool = False) -> dict[str, str 
     if stored != calculated:
         raise BuildError(f"Mega Drive checksum mismatch: stored {stored:04X}, calculated {calculated:04X}")
     open_hits = data.count(OPEN_PATTERN)
+    command_hits = data.count(COMMAND_ADDRESS_PATTERN)
+    close_hits = data.count(CLOSE_PATTERN)
     track_hits = data.count(TRACK03_PATTERN)
-    if open_hits != 1 or track_hits != 1:
-        raise BuildError(f"MD+ signature check failed: overlay={open_hits}, track03={track_hits}")
+    if open_hits != 52 or command_hits != 52 or close_hits != 52 or track_hits != 1:
+        raise BuildError(
+            "MD+ signature check failed: "
+            f"open={open_hits}, command={command_hits}, close={close_hits}, track03={track_hits}"
+        )
     digest = sha256(path)
     if strict_regression and (len(data) != EXPECTED_ROM_SIZE or digest != PROVEN_SHA256):
         raise BuildError(
@@ -162,7 +249,9 @@ def verify_rom(path: Path, *, strict_regression: bool = False) -> dict[str, str 
         "size": len(data),
         "sha256": digest,
         "header_checksum": f"{stored:04X}",
-        "overlay_signatures": open_hits,
+        "overlay_open_signatures": open_hits,
+        "command_signatures": command_hits,
+        "overlay_close_signatures": close_hits,
         "track03_signatures": track_hits,
     }
 

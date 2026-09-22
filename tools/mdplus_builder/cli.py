@@ -6,7 +6,15 @@ import shutil
 import sys
 from pathlib import Path
 
-from .audio import convert_audio_file, detect_loops, prepare_audio, score_loop, validate_manifest, validate_wave
+from .audio import (
+    check_ffmpeg_audio_capabilities,
+    convert_audio_file,
+    detect_loops,
+    prepare_audio,
+    score_loop,
+    validate_manifest,
+    validate_wave,
+)
 from .common import (
     BUILD,
     DEFAULT_MANIFEST,
@@ -105,7 +113,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         if args.command == "doctor":
-            result = {name: require_program(name) for name in ("git", "make", "gcc", "ffmpeg", "python3")}
+            result: dict[str, object] = {
+                name: require_program(name) for name in ("git", "make", "gcc", "python3")
+            }
+            capabilities = check_ffmpeg_audio_capabilities()
+            result["ffmpeg"] = capabilities.pop("ffmpeg")
+            result["ffprobe"] = capabilities.pop("ffprobe")
+            result["audio_conversion"] = capabilities
             _print_json(result)
         elif args.command == "bootstrap":
             bootstrap(local_source=args.local_source, skip_assembler_build=args.skip_assembler_build)
