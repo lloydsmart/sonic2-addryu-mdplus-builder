@@ -87,10 +87,10 @@
       "track": 13,
       "name": "Sky Chase Zone",
       "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 09 Sky Chase Zone.wav",
-      "enabled": false,
+      "enabled": true,
       "mode": "loop",
-      "loop_start_sector": null,
-      "loop_end_sector": null,
+      "loop_start_sector": 11113,
+      "loop_end_sector": 14082,
       "verification": "pending"
     },
     {
