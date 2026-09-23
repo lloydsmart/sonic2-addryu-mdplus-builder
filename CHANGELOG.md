@@ -9,6 +9,12 @@ Versioning for its own tooling releases.
 
 ### Changed
 
+- Mark all 16 enabled Addryu cues as MiSTer-hardware verified, preserving every
+  loop point and WAV.
+- Promote the repaired REV00 ROM to the audited strict regression baseline:
+  checksum `49A0`, SHA-256
+  `a1480c1699e80de5dac5b800a463ff1f1cafd4ad73642f6fbf0e09086c5df7fc`.
+
 - Enable Aquatic Ruin Zone MD+ track 07 with the hardware-verified sector
   `828 → 4284` loop.
 
@@ -46,6 +52,11 @@ Versioning for its own tooling releases.
 - Legal, contribution, security, conduct, and third-party documentation.
 
 ### Fixed
+
+- Repair ArcadeTV's game-mode dispatch with a four-byte tail branch and nearby
+  trampoline, restoring the level-select cheat and Death Egg ending transition
+  in compiled regression tests and successful MiSTer hardware testing. The
+  repaired ROM is now the audited production baseline.
 
 - Eliminate 33 ASL MOVEQ sign-extension warning sites through guarded symbolic
   signed-byte conversion, preserving the exact ROM and intentional odd-address access.
