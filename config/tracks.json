@@ -117,10 +117,10 @@
       "track": 29,
       "name": "Special Stage",
       "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 12 Special Stage (+ Ripping Guitar Solo).wav",
-      "enabled": false,
+      "enabled": true,
       "mode": "loop",
-      "loop_start_sector": null,
-      "loop_end_sector": null,
+      "loop_start_sector": 864,
+      "loop_end_sector": 10642,
       "verification": "pending"
     },
     {
