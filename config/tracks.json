@@ -137,10 +137,10 @@
       "track": 28,
       "name": "Mystic Cave Zone (2P)",
       "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 14 Mystic Cave Zone (2P).wav",
-      "enabled": false,
+      "enabled": true,
       "mode": "loop",
-      "loop_start_sector": null,
-      "loop_end_sector": null,
+      "loop_start_sector": 1592,
+      "loop_end_sector": 9592,
       "verification": "pending"
     },
     {
