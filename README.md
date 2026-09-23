@@ -132,16 +132,18 @@ still rejecting unexpected source edits.
 The pinned Sonic source predates current ASL semantics. Preparation balances
 replacement RAM `PHASE` sections, checks RAM usage without relying on 32-bit
 counter wraparound, makes word-sized RAM operands explicit, and parenthesizes
-ambiguous anonymous-label expressions. These are syntax compatibility changes;
+ambiguous anonymous-label expressions. It also makes the signed 8-bit intent
+of 33 audited high-byte `moveq` operands explicit while retaining symbolic IDs.
+These are syntax compatibility changes;
 the source revision, upstream build script, Sonic object converter/compressor,
 pointer fixups, and header fixer remain unchanged.
 
 Clean builds with the old and new assemblers produce the same complete ROM
 SHA-256 listed below, including the compressed Z80 driver. The nine CPU-level
-tests described below provide additional regression coverage. ASL reports legacy-source warnings, including
-implicit sign extension for
-`moveq` operands; these do not change the verified output. The migration does not establish a new ROM baseline
-or claim a new hardware test.
+tests described below provide additional regression coverage. The only remaining
+ASL warning is the intentional odd-address word access (`move.w (1).w,d0`),
+which causes a hardware crash; its instruction remains unchanged. The migration
+does not establish a new ROM baseline or claim a new hardware test.
 
 ## Audio normalization policy
 

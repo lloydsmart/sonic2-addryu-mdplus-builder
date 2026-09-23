@@ -401,7 +401,36 @@ def _asl_word_operands(text: str) -> tuple[str, int]:
     return "".join(lines), count
 
 
+# Audited high-byte MOVEQ operands in the pinned s2.asm, all targeting d0.
+# Keep symbols so their meaning remains visible in the prepared source.
+MOVEQ_SIGNED_OPERANDS = (
+    "MusID_Ending", "MusID_Credits", "MusID_Title", "MusID_FadeOut",
+    "MusID_Boss", "MusID_WFZ", "MusID_EndBoss",
+    "SndID_Sparkle", "SndID_Blip", "SndID_Fire", "SndID_MechaSonicBuzz",
+    "SndID_SpindashRelease", "SndID_LaserBeam", "SndID_SpikeSwitch",
+    "SndID_Scatter", "SndID_Helicopter", "SndID_LargeLaser", "SndID_Rumbling",
+    "SndID_Smash", "SndID_Rumbling2", "SndID_Beep", "$E6",
+)
+
+
+def _asl_moveq_operands(text: str) -> tuple[str, int]:
+    pattern = re.compile(
+        r"(?m)^([ \t]*moveq[ \t]+#)("
+        + "|".join(re.escape(operand) for operand in MOVEQ_SIGNED_OPERANDS)
+        + r")(?=,d0[ \t]*(?:;[^\n]*)?$)"
+    )
+    return pattern.subn(r"\1(\2-$100)", text)
+
+
 def _asl_s2_source(text: str) -> str:
+    text = _asl_legacy_s2_source(text)
+    text, count = _asl_moveq_operands(text)
+    if count != 33:
+        raise BuildError(f"Expected 33 signed MOVEQ operands, got {count}")
+    return text
+
+
+def _asl_legacy_s2_source(text: str) -> str:
     text, count = _asl_word_operands(text)
     if count != 85:
         raise BuildError(f"Expected 85 word-sized RAM operands, got {count}")
@@ -454,6 +483,7 @@ def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
         if name == "s2.asm":
             accepted.add(_legacy_s2_source(originals[name]))
             accepted.add(_hybrid_s2_source(originals[name]))
+            accepted.add(_asl_legacy_s2_source(_hybrid_s2_source(originals[name])))
         if current not in accepted:
             raise BuildError(f"Source checkout has unexpected content: {name}")
     script = source_dir / "build.sh"
