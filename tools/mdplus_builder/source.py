@@ -11,7 +11,7 @@ from .common import ASSEMBLER_DIR, BUILD, DEPENDENCIES, ROM_PATH, SOURCE_DIR, Bu
 from .driver import verify_driver_load
 
 EXPECTED_ROM_SIZE = 2_129_922
-REGRESSION_SHA256 = "93a8cd08f70843ec2416bfea5eb89cc7e5f643cddb84d491fe85ad349ff621d4"
+REGRESSION_SHA256 = "a1480c1699e80de5dac5b800a463ff1f1cafd4ad73642f6fbf0e09086c5df7fc"
 OPEN_PATTERN = bytes.fromhex("33 fc cd 54 00 03 f7 fa")
 CLOSE_PATTERN = bytes.fromhex("33 fc 00 00 00 03 f7 fa")
 COMMAND_ADDRESS_PATTERN = bytes.fromhex("00 03 f7 fe")
@@ -183,6 +183,35 @@ def _replace_exact(text: str, old: str, new: str, count: int = 1) -> str:
     if text.count(old) != count:
         raise BuildError(f"Expected {count} upstream matches for {old!r}, got {text.count(old)}")
     return text.replace(old, new)
+
+
+def _repair_game_mode_dispatch(text: str) -> str:
+    """Restore ArcadeTV's fixed-width table and its tail-transfer contract.
+
+    apply_mdplus checks the whole pinned input hash first. Match the dispatch
+    and placement anchors as well, so changed or duplicated structures fail
+    before any prepared source is written.
+    """
+    dispatch = ("\tjsr\tGameModesArray(pc,d0.w)\t; jump to apt location in ROM\n"
+                "\tbra.s\tMainGameLoop\t; loop indefinitely\n")
+    mask = ("\tandi.w\t#$3C,d0\t; limit Game Mode value to $3C max "
+            "(change to a maximum of 7C to add more game modes)\n")
+    text = _replace_exact(text, mask + dispatch, mask + dispatch)
+    text = _replace_exact(
+        text,
+        "GameMode_2PResults:\tjsr\tTwoPlayerResults\t; 2P results mode\n",
+        "GameMode_2PResults:\tbra.w\tJmpTo_TwoPlayerResults\t; 2P results mode\n",
+    )
+    if re.search(r"(?m)^JmpTo_TwoPlayerResults\b", text):
+        raise BuildError("Unexpected existing JmpTo_TwoPlayerResults label")
+    # This wrapper ends in an unconditional JMP, after the complete game-mode
+    # table and checksum handler. A shim here has no fallthrough predecessor
+    # and is within BRA.W range; TwoPlayerResults itself is now out of range.
+    anchor = "LevelSelectMenu: ;;\n\tjmp\t(MenuScreen).l\n"
+    return _replace_exact(text, anchor, anchor + (
+        "\n; Keep game-mode slots four bytes and retain MainGameLoop's return address.\n"
+        "JmpTo_TwoPlayerResults:\n\tjmp\t(TwoPlayerResults).l\n"
+    ))
 
 
 def _hybrid_msu_source() -> str:
@@ -459,7 +488,7 @@ def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
     legacy_msu, legacy_counts = _convert_msu_source(originals["msu-md.asm"])
     outputs = {
         "msu-md.asm": _hybrid_msu_source(),
-        "s2.asm": _asl_s2_source(_hybrid_s2_source(originals["s2.asm"])),
+        "s2.asm": _asl_s2_source(_repair_game_mode_dispatch(_hybrid_s2_source(originals["s2.asm"]))),
         "s2.constants.asm": _asl_constants_source(originals["s2.constants.asm"]),
         "s2.macros.asm": _replace_exact(originals["s2.macros.asm"],
                                         "dc.ATTRIBUTE ptr-current_offset_table",
@@ -484,6 +513,8 @@ def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
             accepted.add(_legacy_s2_source(originals[name]))
             accepted.add(_hybrid_s2_source(originals[name]))
             accepted.add(_asl_legacy_s2_source(_hybrid_s2_source(originals[name])))
+            # Exact previous audited conversion, before the gameplay repair.
+            accepted.add(_asl_s2_source(_hybrid_s2_source(originals[name])))
         if current not in accepted:
             raise BuildError(f"Source checkout has unexpected content: {name}")
     script = source_dir / "build.sh"

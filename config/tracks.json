@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "rom_basename": "Sonic 2 - Addryu Mega-CD Remix MD+",
-  "notes": "Tracks with measured and locally auditioned loop boundaries may be enabled with pending verification. Tracks marked mister-hardware have additionally been verified end to end on MiSTer.",
+  "notes": "All 16 enabled Addryu cues and their loop boundaries have been verified end to end on MiSTer hardware.",
   "tracks": [
     {
       "track": 3,
@@ -41,7 +41,7 @@
       "mode": "loop",
       "loop_start_sector": 1137,
       "loop_end_sector": 5137,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 9,
@@ -51,7 +51,7 @@
       "mode": "loop",
       "loop_start_sector": 1063,
       "loop_end_sector": 4557,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 10,
@@ -61,7 +61,7 @@
       "mode": "loop",
       "loop_start_sector": 1202,
       "loop_end_sector": 4802,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 11,
@@ -71,7 +71,7 @@
       "mode": "loop",
       "loop_start_sector": 3541,
       "loop_end_sector": 6639,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 12,
@@ -81,7 +81,7 @@
       "mode": "loop",
       "loop_start_sector": 1645,
       "loop_end_sector": 5245,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 13,
@@ -91,7 +91,7 @@
       "mode": "loop",
       "loop_start_sector": 11113,
       "loop_end_sector": 14082,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 14,
@@ -101,7 +101,7 @@
       "mode": "loop",
       "loop_start_sector": 1874,
       "loop_end_sector": 5474,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 15,
@@ -111,7 +111,7 @@
       "mode": "loop",
       "loop_start_sector": 1829,
       "loop_end_sector": 5641,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 29,
@@ -121,7 +121,7 @@
       "mode": "loop",
       "loop_start_sector": 864,
       "loop_end_sector": 10642,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 26,
@@ -131,7 +131,7 @@
       "mode": "loop",
       "loop_start_sector": 1364,
       "loop_end_sector": 4160,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 28,
@@ -141,7 +141,7 @@
       "mode": "loop",
       "loop_start_sector": 1592,
       "loop_end_sector": 9592,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 27,
@@ -151,7 +151,7 @@
       "mode": "loop",
       "loop_start_sector": 1984,
       "loop_end_sector": 7573,
-      "verification": "pending"
+      "verification": "mister-hardware"
     },
     {
       "track": 31,
@@ -161,7 +161,7 @@
       "mode": "loop",
       "loop_start_sector": 3410,
       "loop_end_sector": 7267,
-      "verification": "pending"
+      "verification": "mister-hardware"
     }
   ]
 }

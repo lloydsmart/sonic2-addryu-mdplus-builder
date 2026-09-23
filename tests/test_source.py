@@ -103,6 +103,8 @@ class SourceConversionTests(unittest.TestCase):
             path = Path(directory) / "test.md"
             path.write_bytes(data)
             result = verify_rom(path)
+            with self.assertRaisesRegex(BuildError, "differs from the audited regression target"):
+                verify_rom(path, strict_regression=True)
 
         self.assertEqual(result["overlay_open_signatures"], 21)
         self.assertEqual(result["command_signatures"], 21)

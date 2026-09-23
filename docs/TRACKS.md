@@ -5,19 +5,34 @@ sample frames per sector at 44.1 kHz. Every looping output is therefore trimmed
 to exactly `loop_end_sector * 588` frames, and its CUE entry contains
 `REM LOOP loop_start_sector`.
 
-Tracks marked `mister-hardware` have been tested end to end on MiSTer:
+All 16 Addryu cues are enabled in the default package and marked
+`mister-hardware`: every cue and loop has passed end-to-end MiSTer testing.
 
-| Addryu album track | Sonic/MD+ track | Loop start | Loop end | Result |
+| Addryu cue | Sonic/MD+ track | Loop start | Loop end | Result |
 | --- | ---: | ---: | ---: | --- |
-| 01 Emerald Hill Zone | 03 | 292 | 3892 | Seamless on MiSTer |
-| 02 Chemical Plant Zone | 05 | 1900 | 5500 | Seamless on MiSTer |
-| 03 Aquatic Ruin Zone | 07 | 828 | 4284 | Seamless on MiSTer |
+| Emerald Hill Zone | 03 | 292 | 3892 | Verified on MiSTer |
+| Chemical Plant Zone | 05 | 1900 | 5500 | Verified on MiSTer |
+| Aquatic Ruin Zone | 07 | 828 | 4284 | Verified on MiSTer |
+| Casino Night Zone | 08 | 1137 | 5137 | Verified on MiSTer |
+| Hill Top Zone | 09 | 1063 | 4557 | Verified on MiSTer |
+| Mystic Cave Zone | 10 | 1202 | 4802 | Verified on MiSTer |
+| Oil Ocean Zone | 11 | 3541 | 6639 | Verified on MiSTer |
+| Metropolis Zone | 12 | 1645 | 5245 | Verified on MiSTer |
+| Sky Chase Zone | 13 | 11113 | 14082 | Verified on MiSTer |
+| Wing Fortress Zone | 14 | 1874 | 5474 | Verified on MiSTer |
+| Death Egg Zone | 15 | 1829 | 5641 | Verified on MiSTer |
+| Emerald Hill Zone (2P) | 26 | 1364 | 4160 | Verified on MiSTer |
+| Casino Night Zone (2P) | 27 | 1984 | 7573 | Verified on MiSTer |
+| Mystic Cave Zone (2P) | 28 | 1592 | 9592 | Verified on MiSTer |
+| Special Stage | 29 | 864 | 10642 | Verified on MiSTer |
+| Hidden Palace Zone | 31 | 3410 | 7267 | Verified on MiSTer |
 
-The remaining album-to-game mappings are recorded in `config/tracks.json`.
-A track may be enabled with `pending` verification once its loop has been
-measured and locally auditioned; `mister-hardware` is reserved for the final
-end-to-end MiSTer pass. Unmeasured or guessed loops therefore remain disabled
-and cannot silently enter a release build.
+Hidden Palace was verified via Sound Test `10`. Sky Chase track 13 loops
+correctly and is hardware-verified; its long first-play intro may be trimmed
+in a separate future audio-polish change. Its audio and loop points are unchanged.
+
+For future additions, `mister-hardware` is reserved for the final end-to-end
+MiSTer pass. Do not enable unmeasured or guessed loops in the default manifest.
 
 ## Fixed ROM routing
 
@@ -50,7 +65,7 @@ The native 1-up jingle ducks MD+ without changing music ownership.
 
 An absent WAV for any of the sixteen IDs is an incomplete-package error and
 never triggers native fallback. Disabled entries remain MD+-owned in the ROM;
-the default package intentionally supports only the three verified Addryu cues.
+the default package includes all sixteen hardware-verified Addryu cues.
 
 ## Finding the next loop
 

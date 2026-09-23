@@ -27,14 +27,16 @@ not download audio; you supply your own legitimately purchased files.
 
 ## Build status
 
-Current status: the hybrid ROM is reproducible and hardware-verified on MiSTer.
-Native title/menu music, temporary native cues, native SFX alongside MD+ BGM,
-pause/resume, fades, and progression through Emerald Hill, Chemical Plant and
-Aquatic Ruin have been tested. Emerald Hill's sector `292 → 3892`, Chemical
-Plant's sector `1900 → 5500`, and Aquatic Ruin's sector `828 → 4284` loops
-have been verified as seamless
-on MiSTer. The other Addryu tracks are mapped but deliberately disabled until
-their loop points have been measured and hardware-tested.
+Current status: all 16 Addryu cues are enabled in the default package and have
+been hardware-verified on MiSTer, including their loops. Native title/menu
+music, temporary native cues, native SFX alongside MD+ BGM, pause/resume and
+fades have also been tested.
+
+The game-mode dispatch repair fixes inherited ArcadeTV regressions: the
+Sound Test `19, 65, 09, 17` cheat followed by holding A + Start now opens the
+normal 1P level select, and defeating the Death Egg final boss now enters the
+ending cinematic instead of the VS/multiplayer level-select menu. Both fixes
+have passed MiSTer hardware verification. REV00 remains the current baseline.
 
 ## What the build does
 
@@ -76,6 +78,7 @@ inputs/audio/
   Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 01 Emerald Hill Zone.wav
   Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 02 Chemical Plant Zone.wav
   Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 03 Aquatic Ruin Zone.wav
+  ... (all 16 album WAVs listed in config/tracks.json)
 ```
 
 Run:
@@ -85,7 +88,7 @@ make doctor
 make all INPUT_DIR="$PWD/inputs/audio"
 ```
 
-The default manifest builds the three hardware-verified stage tracks at:
+The default manifest builds all 16 hardware-verified Addryu cues at:
 
 ```text
 dist/Sonic 2 - Addryu Mega-CD Remix MD+/
@@ -94,6 +97,19 @@ dist/Sonic 2 - Addryu Mega-CD Remix MD+/
   track03.wav
   track05.wav
   track07.wav
+  track08.wav
+  track09.wav
+  track10.wav
+  track11.wav
+  track12.wav
+  track13.wav
+  track14.wav
+  track15.wav
+  track26.wav
+  track27.wav
+  track28.wav
+  track29.wav
+  track31.wav
   SHA256SUMS.json
 ```
 
@@ -138,12 +154,13 @@ These are syntax compatibility changes;
 the source revision, upstream build script, Sonic object converter/compressor,
 pointer fixups, and header fixer remain unchanged.
 
-Clean builds with the old and new assemblers produce the same complete ROM
-SHA-256 listed below, including the compressed Z80 driver. The nine CPU-level
+The assembler migration preserved the complete ROM SHA-256 at that time,
+including the compressed Z80 driver. The nine CPU-level
 tests described below provide additional regression coverage. The only remaining
 ASL warning is the intentional odd-address word access (`move.w (1).w,d0`),
-which causes a hardware crash; its instruction remains unchanged. The migration
-does not establish a new ROM baseline or claim a new hardware test.
+which causes a hardware crash; its instruction remains unchanged. The assembler
+migration itself did not change the ROM baseline. The subsequent game-mode
+repair establishes the hardware-verified baseline below.
 
 ## Audio normalization policy
 
@@ -196,10 +213,14 @@ python3 -m tools.mdplus_builder verify-rom \
 Hardware-verified hybrid regression values:
 
 - size: `2,129,922` bytes
-- SHA-256: `93a8cd08f70843ec2416bfea5eb89cc7e5f643cddb84d491fe85ad349ff621d4`
-- Mega Drive checksum: `BE38`
+- SHA-256: `a1480c1699e80de5dac5b800a463ff1f1cafd4ad73642f6fbf0e09086c5df7fc`
+- Mega Drive checksum: `49A0`
 - 21 complete MD+ open/command/close signatures and one Emerald Hill track-03
   signature
+
+The repaired REV00 ROM is the audited production baseline. Both `build-rom`
+and `--strict-regression` enforce these values after successful MiSTer
+verification of the level-select cheat and Death Egg ending transition.
 
 The first hybrid hardware test failed. This corrected ROM fixes the truncated
 Z80 driver load, separates the handoff ACK from the command queue, and has since
@@ -219,8 +240,8 @@ verification.
 The [sixteen Addryu cues](docs/TRACKS.md#fixed-rom-routing) are fixed in the ROM,
 independent of manifest flags, CUE contents, and files on disk. Missing WAVs for
 those cues are incomplete-package errors; they never select native music.
-The default three-track package is deliberately a partial hardware test package.
-It does not provide the other thirteen Addryu-owned cues.
+The default package includes all sixteen Addryu-owned cues, each verified on
+MiSTer hardware.
 
 Unarranged cues, including title/options, bosses, invincibility, drowning, act
 clear, ending and credits, use the original Sonic 2 soundtrack. No second
@@ -250,9 +271,10 @@ PYTHON
 ```
 
 Every build also verifies the loader instructions and compares the complete
-ROM-decompressed Z80 driver against the assembled object segment. The clean
-build must match all regression values above. Use a fresh destination
-for later regression runs if that checkout already contains generated changes.
+ROM-decompressed Z80 driver against the assembled object segment. Use a fresh
+destination for later runs if that checkout already contains generated changes.
+The clean build must pass the strict regression check against the audited
+hardware baseline above. Run both binary suites below against that build.
 
 For CPU-level handoff regression tests, install the optional emulation tools
 in an ignored virtual environment and use the generated ROM and map:
@@ -262,11 +284,18 @@ python3 -m venv build/emulation-venv
 build/emulation-venv/bin/pip install -e '.[emulation]'
 PYTHONPATH=. build/emulation-venv/bin/python tests/check_hybrid_binary.py \
   build/hybrid-clean
+PYTHONPATH=. build/emulation-venv/bin/python tests/check_game_modes_binary.py \
+  build/hybrid-clean
 ```
 
 These tests execute the actual loader, router, input service, Z80 dispatcher and
 VInt code. They record MD+ commands and sound-chip writes, supplementing the
-completed MiSTer verification with deterministic CPU-level regression coverage.
+existing MiSTer audio verification with deterministic CPU-level coverage.
+The gameplay suite additionally checks all eleven compiled game-mode slots,
+sound-test cheat entry and title transitions (including negative controls),
+the final Death Egg transition, and the 2P Results return stack. It executes
+actual ROM code at these boundaries, with graphics/interrupt timing excluded;
+it does not replace MiSTer gameplay testing.
 
 ## Copyright
 
