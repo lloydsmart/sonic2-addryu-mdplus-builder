@@ -127,10 +127,10 @@
       "track": 26,
       "name": "Emerald Hill Zone (2P)",
       "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 13 Emerald Hill Zone (2P).wav",
-      "enabled": false,
+      "enabled": true,
       "mode": "loop",
-      "loop_start_sector": null,
-      "loop_end_sector": null,
+      "loop_start_sector": 1364,
+      "loop_end_sector": 4160,
       "verification": "pending"
     },
     {
