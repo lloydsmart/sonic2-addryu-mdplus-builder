@@ -47,6 +47,9 @@ Versioning for its own tooling releases.
 
 ### Fixed
 
+- Eliminate 33 ASL MOVEQ sign-extension warning sites through guarded symbolic
+  signed-byte conversion, preserving the exact ROM and intentional odd-address access.
+
 - Process the final compressed Z80 driver byte; the first hybrid ROM otherwise
   omitted its handoff ACK store and return, causing the first level transition
   to fail on MiSTer. Builds now verify the entire loaded driver against assembly.
