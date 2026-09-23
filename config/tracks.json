@@ -157,10 +157,10 @@
       "track": 31,
       "name": "Hidden Palace Zone",
       "source": "Addryu - Sonic the Hedgehog 2 -Mega-CD Remix- - 16 Hidden Palace Zone.wav",
-      "enabled": false,
+      "enabled": true,
       "mode": "loop",
-      "loop_start_sector": null,
-      "loop_end_sector": null,
+      "loop_start_sector": 3410,
+      "loop_end_sector": 7267,
       "verification": "pending"
     }
   ]
