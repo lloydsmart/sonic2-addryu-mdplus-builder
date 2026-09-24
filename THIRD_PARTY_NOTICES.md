@@ -4,15 +4,20 @@ This repository contains original build tooling and does not vendor the two
 source dependencies below. The bootstrap command fetches their exact pinned
 commits into the ignored `build/` directory.
 
-## ArcadeTV/msu-md-sonic2
+## lloydsmart/msu-md-sonic2
 
-- Repository: <https://github.com/ArcadeTV/msu-md-sonic2>
-- Pinned commit: `23d24dda3758a1fd341c01e7f7e94e11780a2608`
+- Repository: <https://github.com/lloydsmart/msu-md-sonic2>
+- Upstream: <https://github.com/ArcadeTV/msu-md-sonic2>
+- Pinned commit: `b49afdb010090c282e1bb79f18f14a32d1bb7a99`
+- Upstream repair: <https://github.com/ArcadeTV/msu-md-sonic2/pull/5>
 - Declared repository license: CC0 1.0 Universal
 
-The project applies a deterministic MD+ conversion to a temporary checkout.
-The dependency may contain material whose rights are not granted merely by its
-repository license; users remain responsible for lawful use.
+The pinned fork commit is based directly on ArcadeTV commit
+`23d24dda3758a1fd341c01e7f7e94e11780a2608` and contains the game-mode dispatch
+repair used by this build. The project applies its deterministic MD+ conversion
+to a temporary checkout. The dependency may contain material whose rights are
+not granted merely by its repository license; users remain responsible for
+lawful use.
 
 ## Macroassembler-AS/asl-releases
 

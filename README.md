@@ -32,16 +32,21 @@ been hardware-verified on MiSTer, including their loops. Native title/menu
 music, temporary native cues, native SFX alongside MD+ BGM, pause/resume and
 fades have also been tested.
 
-The game-mode dispatch repair fixes inherited ArcadeTV regressions: the
-Sound Test `19, 65, 09, 17` cheat followed by holding A + Start now opens the
-normal 1P level select, and defeating the Death Egg final boss now enters the
-ending cinematic instead of the VS/multiplayer level-select menu. Both fixes
-have passed MiSTer hardware verification. REV00 remains the current baseline.
+The pinned `msu-md-sonic2` fork includes the game-mode dispatch repair
+submitted upstream as
+[ArcadeTV PR #5](https://github.com/ArcadeTV/msu-md-sonic2/pull/5).
+The Sound Test `19, 65, 09, 17` cheat followed by holding A + Start now opens
+the normal 1P level select, and defeating the Death Egg final boss now enters
+the ending cinematic instead of the VS/multiplayer level-select menu. Both
+fixes have passed MiSTer hardware verification. REV00 remains the current
+baseline.
 
 ## What the build does
 
-1. Fetches exact, pinned revisions of ArcadeTV's Sonic 2 MSU-MD source and the
-   maintained Macroassembler AS (ASL) release.
+1. Fetches exact, pinned revisions of
+   [`lloydsmart/msu-md-sonic2`](https://github.com/lloydsmart/msu-md-sonic2),
+   a fork of ArcadeTV's Sonic 2 MSU-MD source, and the maintained
+   Macroassembler AS (ASL) release.
 2. Builds the assembler locally from source.
 3. Deterministically removes the Mega-CD bootstrap/polling/seek path, replaces
    playback with MD+ commands, and wraps every command in a short-lived MD+
@@ -139,11 +144,17 @@ pinned to commit `c7155b4fd3d33110f0eb098dede4295a8c008772` in
 portable `Makefile.def.tmpl` and `make binaries` under ignored `build/asl/`.
 No system-wide assembler installation is required.
 
-Existing checkouts can run `make bootstrap`, `make source`, and `make rom`.
-The previous `build/as-sonic/` directory is unused and can remain in place;
-there is no need to delete audio or other build inputs. Preparation accepts
-the previous production conversion and upgrades it deterministically, while
-still rejecting unexpected source edits.
+Existing checkouts created before the fixed source pin should remove the
+ignored `build/source/` checkout once before running `make bootstrap`:
+
+```sh
+rm -rf build/source
+make bootstrap
+```
+
+This does not affect soundtrack inputs under `inputs/`. The previous
+`build/as-sonic/` directory is unused and can remain in place. Source
+preparation remains deterministic and rejects unexpected edits.
 
 The pinned Sonic source predates current ASL semantics. Preparation balances
 replacement RAM `PHASE` sections, checks RAM usage without relying on 32-bit
@@ -183,15 +194,17 @@ All trimming and sector calculations occur after conversion in the final
 44.1 kHz domain. Without an explicit end sector, only complete 588-frame CD
 sectors are retained and the incomplete trailing fragment is reported.
 
-To reuse an existing clean checkout instead of downloading the Sonic source:
+To reuse an existing clean checkout instead of downloading the Sonic source,
+the checkout must contain the pinned `lloydsmart/msu-md-sonic2` commit:
 
 ```sh
 python3 -m tools.mdplus_builder bootstrap \
-  --local-source "$HOME/sonic2-mdplus"
+  --local-source "$HOME/src/msu-md-sonic2"
 ```
 
-The tool clones the specified checkout at the pinned commit into `build/source`;
-it does not alter the original experiment.
+The tool clones the specified checkout at the exact pinned commit into
+`build/source`; it does not alter the original checkout. An ArcadeTV-only clone
+that has not fetched the fork commit cannot supply this dependency.
 
 ## ROM verification
 

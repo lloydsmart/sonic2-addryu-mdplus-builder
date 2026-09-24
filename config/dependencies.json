@@ -1,7 +1,7 @@
 {
   "source": {
-    "url": "https://github.com/ArcadeTV/msu-md-sonic2.git",
-    "commit": "23d24dda3758a1fd341c01e7f7e94e11780a2608"
+    "url": "https://github.com/lloydsmart/msu-md-sonic2.git",
+    "commit": "b49afdb010090c282e1bb79f18f14a32d1bb7a99"
   },
   "assembler": {
     "url": "https://github.com/Macroassembler-AS/asl-releases.git",
