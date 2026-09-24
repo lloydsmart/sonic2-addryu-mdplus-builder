@@ -7,6 +7,8 @@ Versioning for its own tooling releases.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-24
+
 ### Changed
 
 - Trim Sky Chase Zone track 13 by 1162 sectors (15.493333 seconds), shifting its
