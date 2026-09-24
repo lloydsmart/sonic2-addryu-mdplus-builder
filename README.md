@@ -247,9 +247,12 @@ passed extended MiSTer testing. See the
 
 Edit a working copy of `config/tracks.json`; do not guess loop values. The
 manifest refuses to build an enabled looping track without valid start/end
-sectors. See [docs/TRACKS.md](docs/TRACKS.md) for candidate detection,
-sector/sample arithmetic, speed-shoes tracks, listening tests, and MiSTer
-verification.
+sectors. An optional `trim_start_sector` removes whole CD sectors from the
+start of the processed 44.1 kHz audio before the output WAV is written; loop
+start/end sectors remain relative to the generated WAV after that trim. See
+[docs/TRACKS.md](docs/TRACKS.md) for candidate
+detection, sector/sample arithmetic, speed-shoes tracks, listening tests, and
+MiSTer verification.
 
 ## Limitations
 

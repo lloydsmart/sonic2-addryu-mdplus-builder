@@ -93,6 +93,44 @@ class BuilderTests(unittest.TestCase):
             with self.assertRaises(BuildError):
                 validate_manifest(path)
 
+    def test_manifest_validates_trim_start_sector(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tracks.json"
+
+            def write_manifest(value: object) -> None:
+                path.write_text(
+                    json.dumps(
+                        {
+                            "schema": 1,
+                            "tracks": [
+                                {
+                                    "track": 13,
+                                    "enabled": True,
+                                    "source": "track.wav",
+                                    "mode": "loop",
+                                    "trim_start_sector": value,
+                                    "loop_start_sector": 10,
+                                    "loop_end_sector": 20,
+                                }
+                            ],
+                        }
+                    )
+                )
+
+            for value in (0, 1):
+                with self.subTest(valid=value):
+                    write_manifest(value)
+                    validate_manifest(path)
+
+            for value in (-1, 1.5, "1", True):
+                with self.subTest(invalid=value):
+                    write_manifest(value)
+                    with self.assertRaisesRegex(
+                        BuildError,
+                        "trim_start_sector",
+                    ):
+                        validate_manifest(path)
+
     def test_loop_score_for_repeated_silence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "loop.wav"
