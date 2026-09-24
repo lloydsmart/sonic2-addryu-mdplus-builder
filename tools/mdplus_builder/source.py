@@ -11,7 +11,7 @@ from .common import ASSEMBLER_DIR, BUILD, DEPENDENCIES, ROM_PATH, SOURCE_DIR, Bu
 from .driver import verify_driver_load
 
 EXPECTED_ROM_SIZE = 2_129_922
-REGRESSION_SHA256 = "a1480c1699e80de5dac5b800a463ff1f1cafd4ad73642f6fbf0e09086c5df7fc"
+REGRESSION_SHA256 = "315c69fb84dbca2a31ceffe3face70b4138317feed53feb7e23c6a5ab009205e"
 OPEN_PATTERN = bytes.fromhex("33 fc cd 54 00 03 f7 fa")
 CLOSE_PATTERN = bytes.fromhex("33 fc 00 00 00 03 f7 fa")
 COMMAND_ADDRESS_PATTERN = bytes.fromhex("00 03 f7 fe")
@@ -550,7 +550,7 @@ def build_rom(source_dir: Path = SOURCE_DIR, output: Path = ROM_PATH) -> dict[st
         raise BuildError("Assembler is not built; run bootstrap first")
     env = os.environ.copy()
     env["PATH"] = str(ASSEMBLER_DIR) + os.pathsep + env.get("PATH", "")
-    run(["./build.sh", "-r0", "-ds"], cwd=source_dir, env=env)
+    run(["./build.sh", "-r1", "-ds"], cwd=source_dir, env=env)
     built = source_dir / "s2built.bin"
     if not built.exists():
         raise BuildError("Source build did not produce s2built.bin")

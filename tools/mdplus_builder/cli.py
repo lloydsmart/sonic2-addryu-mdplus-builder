@@ -28,9 +28,27 @@ from .common import (
 from .package import assemble, cue_text
 from .source import apply_mdplus, bootstrap, build_rom, verify_rom
 
+CLEAN_ROM_REVISIONS = {
+    "24AB4C3A": "World Rev 0",
+    "7B905383": "World Rev 1",
+}
+
 
 def _path(value: str) -> Path:
     return Path(value).expanduser().resolve()
+
+
+def _clean_rom_revision(value: str) -> str:
+    try:
+        return CLEAN_ROM_REVISIONS[value]
+    except KeyError as exc:
+        expected = ", ".join(
+            f"{crc} ({revision})"
+            for crc, revision in CLEAN_ROM_REVISIONS.items()
+        )
+        raise BuildError(
+            f"CRC32 is {value}; expected one of: {expected}"
+        ) from exc
 
 
 def parser() -> argparse.ArgumentParser:
@@ -48,7 +66,7 @@ def parser() -> argparse.ArgumentParser:
     p = commands.add_parser("prepare-source", help="apply the deterministic MD+ source conversion")
     p.add_argument("--source-dir", type=_path, default=SOURCE_DIR)
 
-    p = commands.add_parser("build-rom", help="build and verify the Rev 0 MD+ ROM")
+    p = commands.add_parser("build-rom", help="build and verify the Rev 1 MD+ ROM")
     p.add_argument("--source-dir", type=_path, default=SOURCE_DIR)
     p.add_argument("--output", type=_path, default=ROM_PATH)
 
@@ -56,7 +74,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("rom", type=_path)
     p.add_argument("--strict-regression", action="store_true")
 
-    p = commands.add_parser("verify-clean-rom", help="verify a user-supplied clean Sonic 2 Rev 0 ROM")
+    p = commands.add_parser("verify-clean-rom", help="identify a supported clean Sonic 2 World ROM revision")
     p.add_argument("rom", type=_path)
 
     p = commands.add_parser("validate-manifest", help="validate track definitions and print the CUE")
@@ -131,9 +149,8 @@ def main(argv: list[str] | None = None) -> int:
             _print_json(verify_rom(args.rom, strict_regression=args.strict_regression))
         elif args.command == "verify-clean-rom":
             value = crc32(args.rom)
-            if value != "24AB4C3A":
-                raise BuildError(f"CRC32 is {value}; expected 24AB4C3A for Sonic 2 (World) Rev 0")
-            _print_json({"path": str(args.rom), "crc32": value, "revision": "World Rev 0"})
+            revision = _clean_rom_revision(value)
+            _print_json({"path": str(args.rom), "crc32": value, "revision": revision})
         elif args.command == "validate-manifest":
             manifest = validate_manifest(args.manifest)
             print(cue_text(manifest), end="")

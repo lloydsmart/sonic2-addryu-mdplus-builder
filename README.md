@@ -38,8 +38,8 @@ submitted upstream as
 The Sound Test `19, 65, 09, 17` cheat followed by holding A + Start now opens
 the normal 1P level select, and defeating the Death Egg final boss now enters
 the ending cinematic instead of the VS/multiplayer level-select menu. Both
-fixes have passed MiSTer hardware verification. REV00 remains the current
-baseline.
+fixes have passed MiSTer hardware verification. REV01 is the current
+hardware-verified baseline.
 
 ## What the build does
 
@@ -53,7 +53,7 @@ baseline.
    overlay transaction after Sonic's startup checksum. A fixed sixteen-cue
    policy routes Addryu arrangements to MD+ and all other music to the original
    Sonic 2 YM2612/PSG/DAC soundtrack; SFX always use the native driver.
-4. Builds the Rev 0 ROM and verifies its Mega Drive header checksum, MD+
+4. Builds the Rev 1 ROM and verifies its Mega Drive header checksum, MD+
    instruction signatures, size, and SHA-256 regression value.
 5. Normalizes enabled user source audio to 44.1 kHz, signed 16-bit stereo PCM,
    trims it on an exact 75 Hz sector boundary, validates it, and generates the
@@ -216,7 +216,9 @@ python3 -m tools.mdplus_builder verify-clean-rom \
   "/path/to/Sonic The Hedgehog 2 (World).md"
 ```
 
-The expected Rev 0 CRC32 is `24AB4C3A`. Generated ROM verification is stricter:
+`verify-clean-rom` recognises both supported canonical World revisions:
+Rev 0 (`24AB4C3A`) and Rev 1 (`7B905383`). Generated ROM verification is
+stricter:
 
 ```sh
 python3 -m tools.mdplus_builder verify-rom \
@@ -226,14 +228,15 @@ python3 -m tools.mdplus_builder verify-rom \
 Hardware-verified hybrid regression values:
 
 - size: `2,129,922` bytes
-- SHA-256: `a1480c1699e80de5dac5b800a463ff1f1cafd4ad73642f6fbf0e09086c5df7fc`
-- Mega Drive checksum: `49A0`
+- SHA-256: `315c69fb84dbca2a31ceffe3face70b4138317feed53feb7e23c6a5ab009205e`
+- Mega Drive checksum: `2911`
 - 21 complete MD+ open/command/close signatures and one Emerald Hill track-03
   signature
 
-The repaired REV00 ROM is the audited production baseline. Both `build-rom`
-and `--strict-regression` enforce these values after successful MiSTer
-verification of the level-select cheat and Death Egg ending transition.
+The repaired REV01 ROM is the audited production baseline. Both `build-rom`
+and `--strict-regression` enforce these values after a complete MiSTer
+hardware playthrough, including the level-select cheat, MD+ and native-audio
+handoffs, Special Stages, 2P, Super Sonic, and the Death Egg ending transition.
 
 The first hybrid hardware test failed. This corrected ROM fixes the truncated
 Z80 driver load, separates the handoff ACK from the command queue, and has since
