@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 import tempfile
@@ -13,6 +14,7 @@ from tools.mdplus_builder.audio import (
     build_conversion_plan,
     check_ffmpeg_audio_capabilities,
     convert_audio_file,
+    prepare_audio,
     probe_audio,
 )
 from tools.mdplus_builder.common import BuildError
@@ -101,6 +103,90 @@ class AudioConversionTests(unittest.TestCase):
             self.assertIsNone(info["conversion"]["dither"])
             self.assertEqual(info["conversion"]["discarded_trailing_frames"], 17)
 
+    def test_native_pcm_start_trim_copies_requested_sector_window(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.wav"
+            destination = Path(directory) / "output.wav"
+            source_bytes = _write_pcm_wave(
+                source,
+                frames=FRAMES_PER_SECTOR * 4,
+            )
+
+            info = convert_audio_file(
+                source,
+                destination,
+                trim_start_sector=1,
+                end_sector=2,
+            )
+
+            with wave.open(str(destination), "rb") as wav:
+                output_bytes = wav.readframes(wav.getnframes())
+
+            bytes_per_sector = FRAMES_PER_SECTOR * 2 * 2
+            self.assertEqual(
+                output_bytes,
+                source_bytes[bytes_per_sector : bytes_per_sector * 3],
+            )
+            self.assertEqual(info["frames"], FRAMES_PER_SECTOR * 2)
+            self.assertEqual(info["sectors"], 2)
+            self.assertEqual(
+                info["conversion"]["method"],
+                "direct_pcm_wave_copy",
+            )
+
+    def test_prepare_audio_applies_manifest_start_trim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_dir = root / "input"
+            output_dir = root / "output"
+            manifest_path = root / "tracks.json"
+            input_dir.mkdir()
+
+            source_bytes = _write_pcm_wave(
+                input_dir / "track.wav",
+                frames=FRAMES_PER_SECTOR * 4,
+            )
+
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "tracks": [
+                            {
+                                "track": 13,
+                                "enabled": True,
+                                "source": "track.wav",
+                                "mode": "loop",
+                                "trim_start_sector": 1,
+                                "loop_start_sector": 1,
+                                "loop_end_sector": 2,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            results = prepare_audio(
+                manifest_path,
+                input_dir,
+                output_dir,
+            )
+
+            with wave.open(str(output_dir / "track13.wav"), "rb") as wav:
+                output_bytes = wav.readframes(wav.getnframes())
+
+            bytes_per_sector = FRAMES_PER_SECTOR * 2 * 2
+            self.assertEqual(
+                output_bytes,
+                source_bytes[bytes_per_sector : bytes_per_sector * 3],
+            )
+            self.assertEqual(results[0]["sectors"], 2)
+            self.assertEqual(
+                results[0]["conversion"]["trim_start_sector"],
+                1,
+            )
+
     def test_non_wav_input_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "source.audio"
@@ -184,6 +270,37 @@ class AudioConversionTests(unittest.TestCase):
 
             self.assertEqual(info["frames"], FRAMES_PER_SECTOR * 2)
             self.assertEqual(info["sectors"], 2)
+
+    def test_ffmpeg_start_trim_uses_final_domain_sector_window(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source-24.wav"
+            destination = Path(directory) / "output.wav"
+            _write_pcm_wave(
+                source,
+                sample_width=3,
+                frames=FRAMES_PER_SECTOR * 4,
+            )
+
+            plan = build_conversion_plan(
+                probe_audio(source),
+                trim_start_sector=1,
+                end_sector=2,
+            )
+            info = convert_audio_file(
+                source,
+                destination,
+                trim_start_sector=1,
+                end_sector=2,
+            )
+
+            self.assertIn(
+                f"atrim=start_sample={FRAMES_PER_SECTOR}:"
+                f"end_sample={FRAMES_PER_SECTOR * 3}",
+                plan.filters,
+            )
+            self.assertEqual(info["frames"], FRAMES_PER_SECTOR * 2)
+            self.assertEqual(info["sectors"], 2)
+            self.assertEqual(info["conversion"]["method"], "ffmpeg")
 
     def test_mono_input_is_expanded_without_unnecessary_dither(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

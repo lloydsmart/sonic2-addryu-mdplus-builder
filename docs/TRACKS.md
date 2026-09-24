@@ -5,6 +5,19 @@ sample frames per sector at 44.1 kHz. Every looping output is therefore trimmed
 to exactly `loop_end_sector * 588` frames, and its CUE entry contains
 `REM LOOP loop_start_sector`.
 
+An optional `trim_start_sector` removes whole sectors from the start of the
+processed 44.1 kHz audio before writing the output WAV. On the FFmpeg path the
+trim is applied after speed, sample-format/rate, and channel processing; on the
+direct native-PCM path those timing domains are identical. `loop_start_sector`
+and `loop_end_sector` always use coordinates in the generated WAV after the
+start trim.
+
+For a track without a speed transform, preserving an existing loop while
+trimming `T` sectors simply subtracts `T` from both loop coordinates. Sky Chase
+demonstrates this: its 1162-sector trim shifts the source loop
+`11113 → 14082` to output coordinates `9951 → 12920`. The 2969-sector repeated
+region itself is unchanged.
+
 All 16 Addryu cues are enabled in the default package and marked
 `mister-hardware`: every cue and loop has passed end-to-end MiSTer testing.
 
@@ -18,7 +31,7 @@ All 16 Addryu cues are enabled in the default package and marked
 | Mystic Cave Zone | 10 | 1202 | 4802 | Verified on MiSTer |
 | Oil Ocean Zone | 11 | 3541 | 6639 | Verified on MiSTer |
 | Metropolis Zone | 12 | 1645 | 5245 | Verified on MiSTer |
-| Sky Chase Zone | 13 | 11113 | 14082 | Verified on MiSTer |
+| Sky Chase Zone | 13 | 9951 | 12920 | Verified on MiSTer |
 | Wing Fortress Zone | 14 | 1874 | 5474 | Verified on MiSTer |
 | Death Egg Zone | 15 | 1829 | 5641 | Verified on MiSTer |
 | Emerald Hill Zone (2P) | 26 | 1364 | 4160 | Verified on MiSTer |
@@ -27,9 +40,10 @@ All 16 Addryu cues are enabled in the default package and marked
 | Special Stage | 29 | 864 | 10642 | Verified on MiSTer |
 | Hidden Palace Zone | 31 | 3410 | 7267 | Verified on MiSTer |
 
-Hidden Palace was verified via Sound Test `10`. Sky Chase track 13 loops
-correctly and is hardware-verified; its long first-play intro may be trimmed
-in a separate future audio-polish change. Its audio and loop points are unchanged.
+Hidden Palace was verified via Sound Test `10`. Sky Chase track 13 removes
+1162 sectors (15.493333 seconds) from the beginning of the Addryu source while
+retaining the same 2969-sector loop; its resulting loop coordinates are 9951
+to 12920. The trimmed opening and loop were verified end-to-end on MiSTer.
 
 For future additions, `mister-hardware` is reserved for the final end-to-end
 MiSTer pass. Do not enable unmeasured or guessed loops in the default manifest.

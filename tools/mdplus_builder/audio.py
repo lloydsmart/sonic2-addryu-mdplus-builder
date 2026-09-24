@@ -136,11 +136,18 @@ def probe_audio(path: Path) -> dict[str, int | str | None]:
 def build_conversion_plan(
     source_info: dict[str, int | str | None],
     *,
+    trim_start_sector: int = 0,
     end_sector: int | None = None,
     speed: float = 1.0,
 ) -> AudioConversionPlan:
     if not 0.5 <= speed <= 2.0:
         raise BuildError("Speed must be between 0.5 and 2.0")
+    if (
+        isinstance(trim_start_sector, bool)
+        or not isinstance(trim_start_sector, int)
+        or trim_start_sector < 0
+    ):
+        raise BuildError("trim_start_sector must be a non-negative integer")
     if end_sector is not None and end_sector <= 0:
         raise BuildError("End sector must be positive")
 
@@ -195,8 +202,17 @@ def build_conversion_plan(
     if channel_conversion:
         filters.append("pan=stereo|c0=c0|c1=c0")
 
+    trim_options: list[str] = []
+    if trim_start_sector:
+        trim_options.append(
+            f"start_sample={trim_start_sector * FRAMES_PER_SECTOR}"
+        )
     if end_sector is not None:
-        filters.append(f"atrim=end_sample={end_sector * FRAMES_PER_SECTOR}")
+        trim_options.append(
+            f"end_sample={(trim_start_sector + end_sector) * FRAMES_PER_SECTOR}"
+        )
+    if trim_options:
+        filters.append("atrim=" + ":".join(trim_options))
     if filters:
         filters.append("asetpts=PTS-STARTPTS")
 
@@ -279,6 +295,15 @@ def validate_manifest(manifest_path: Path) -> dict:
                 raise BuildError(f"Track {number}: enabled entry has no source filename")
             if Path(source).name != source:
                 raise BuildError(f"Track {number}: source must be a filename, not a path")
+            trim_start_sector = entry.get("trim_start_sector", 0)
+            if (
+                isinstance(trim_start_sector, bool)
+                or not isinstance(trim_start_sector, int)
+                or trim_start_sector < 0
+            ):
+                raise BuildError(
+                    f"Track {number}: trim_start_sector must be a non-negative integer"
+                )
             if mode == "loop":
                 start, end = entry.get("loop_start_sector"), entry.get("loop_end_sector")
                 if not isinstance(start, int) or not isinstance(end, int) or not (0 <= start < end):
@@ -286,7 +311,13 @@ def validate_manifest(manifest_path: Path) -> dict:
     return manifest
 
 
-def _copy_wave_frames(source_path: Path, destination: Path, keep_frames: int) -> None:
+def _copy_wave_frames(
+    source_path: Path,
+    destination: Path,
+    keep_frames: int,
+    *,
+    start_frame: int = 0,
+) -> None:
     with tempfile.NamedTemporaryFile(
         dir=destination.parent,
         prefix=f".{destination.name}.",
@@ -301,6 +332,7 @@ def _copy_wave_frames(source_path: Path, destination: Path, keep_frames: int) ->
             target.setframerate(source.getframerate())
             target.setcomptype(source.getcomptype(), source.getcompname())
 
+            source.setpos(start_frame)
             bytes_per_frame = source.getnchannels() * source.getsampwidth()
             remaining = keep_frames
             while remaining:
@@ -322,7 +354,12 @@ def _copy_wave_frames(source_path: Path, destination: Path, keep_frames: int) ->
             temporary.unlink()
 
 
-def _copy_native_wave(source: Path, destination: Path, end_sector: int | None) -> int:
+def _copy_native_wave(
+    source: Path,
+    destination: Path,
+    end_sector: int | None,
+    trim_start_sector: int = 0,
+) -> int:
     info = inspect_wave(source)
     expected = {
         "channels": CHANNELS,
@@ -334,11 +371,32 @@ def _copy_native_wave(source: Path, destination: Path, end_sector: int | None) -
         raise BuildError(f"{source}: ffprobe and WAV properties disagree about native PCM format")
 
     frames = int(info["frames"])
-    keep_frames = end_sector * FRAMES_PER_SECTOR if end_sector is not None else frames - frames % FRAMES_PER_SECTOR
-    if keep_frames > frames:
-        raise BuildError(f"{source}: has {frames} frames, fewer than the requested {keep_frames}")
-    _copy_wave_frames(source, destination, keep_frames)
-    return frames - keep_frames if end_sector is None else 0
+    start_frame = trim_start_sector * FRAMES_PER_SECTOR
+    if start_frame > frames:
+        raise BuildError(
+            f"{source}: has {frames} frames, fewer than the requested "
+            f"start frame {start_frame}"
+        )
+
+    remaining_frames = frames - start_frame
+    keep_frames = (
+        end_sector * FRAMES_PER_SECTOR
+        if end_sector is not None
+        else remaining_frames - remaining_frames % FRAMES_PER_SECTOR
+    )
+    if keep_frames > remaining_frames:
+        raise BuildError(
+            f"{source}: has {remaining_frames} frames after start trim, "
+            f"fewer than the requested {keep_frames}"
+        )
+
+    _copy_wave_frames(
+        source,
+        destination,
+        keep_frames,
+        start_frame=start_frame,
+    )
+    return remaining_frames - keep_frames if end_sector is None else 0
 
 
 def _trim_to_whole_sectors(path: Path) -> int:
@@ -418,6 +476,7 @@ def convert_audio_file(
     source: Path,
     destination: Path,
     *,
+    trim_start_sector: int = 0,
     end_sector: int | None = None,
     speed: float = 1.0,
 ) -> dict:
@@ -431,13 +490,23 @@ def convert_audio_file(
             f"Source audio must be a WAV file; ffprobe identified "
             f"{source_info['container_format']!r}: {source}"
         )
-    plan = build_conversion_plan(source_info, end_sector=end_sector, speed=speed)
+    plan = build_conversion_plan(
+        source_info,
+        trim_start_sector=trim_start_sector,
+        end_sector=end_sector,
+        speed=speed,
+    )
     if source.resolve() == destination.resolve():
         raise BuildError("Input and output audio paths must be different")
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     if _is_direct_copy_wave(source, plan, source_info):
-        discarded_frames = _copy_native_wave(source, destination, end_sector)
+        discarded_frames = _copy_native_wave(
+            source,
+            destination,
+            end_sector,
+            trim_start_sector,
+        )
         method = "direct_pcm_wave_copy"
     else:
         ffmpeg = require_program("ffmpeg")
@@ -479,6 +548,7 @@ def convert_audio_file(
         "soxr_precision": plan.soxr_precision,
         "dither": plan.dither,
         "speed": plan.speed,
+        "trim_start_sector": trim_start_sector,
         "discarded_trailing_frames": discarded_frames,
     }
     return info
@@ -497,8 +567,15 @@ def prepare_audio(manifest_path: Path, input_dir: Path, output_dir: Path = AUDIO
             raise BuildError(f"Track {number}: input file not found: {source}")
         destination = output_dir / _track_name(number)
         speed = float(entry.get("speed", 1.0))
+        trim_start_sector = entry.get("trim_start_sector", 0)
         end_sector = entry.get("loop_end_sector")
-        info = convert_audio_file(source, destination, end_sector=end_sector, speed=speed)
+        info = convert_audio_file(
+            source,
+            destination,
+            trim_start_sector=trim_start_sector,
+            end_sector=end_sector,
+            speed=speed,
+        )
         results.append({"track": number, "path": str(destination), **info})
     if not results:
         raise BuildError("Manifest has no enabled tracks")

@@ -9,6 +9,11 @@ Versioning for its own tooling releases.
 
 ### Changed
 
+- Trim Sky Chase Zone track 13 by 1162 sectors (15.493333 seconds), shifting its
+  output loop coordinates from `11113 → 14082` to `9951 → 12920` while
+  preserving the same 2969-sector source loop. The trimmed opening and loop
+  were verified end-to-end on MiSTer hardware.
+
 - Pin the Sonic source dependency to `lloydsmart/msu-md-sonic2` commit
   `b49afdb010090c282e1bb79f18f14a32d1bb7a99`, which contains the game-mode
   dispatch repair submitted upstream as ArcadeTV PR #5. Remove the duplicate
@@ -30,6 +35,11 @@ Versioning for its own tooling releases.
   additional soundtrack variants without changing the current Addryu profile.
 
 ### Added
+
+- Optional `trim_start_sector` audio-manifest support for sector-exact
+  final-domain start trimming while keeping loop coordinates relative to the
+  generated WAV, with matching native PCM and FFmpeg paths plus unit and
+  manifest-integration coverage.
 
 - Deterministic hybrid music: sixteen fixed Addryu cues use MD+, while other
   cues use Sonic 2's original soundtrack. Missing Addryu WAVs never change ROM
