@@ -16,9 +16,9 @@ Versioning for its own tooling releases.
 
 - Mark all 16 enabled Addryu cues as MiSTer-hardware verified, preserving every
   loop point and WAV.
-- Promote the repaired REV00 ROM to the audited strict regression baseline:
-  checksum `49A0`, SHA-256
-  `a1480c1699e80de5dac5b800a463ff1f1cafd4ad73642f6fbf0e09086c5df7fc`.
+- Promote the repaired REV01 ROM to the audited strict regression baseline
+  after a complete MiSTer hardware playthrough: checksum `2911`, SHA-256
+  `315c69fb84dbca2a31ceffe3face70b4138317feed53feb7e23c6a5ab009205e`.
 
 - Enable Aquatic Ruin Zone MD+ track 07 with the hardware-verified sector
   `828 → 4284` loop.
@@ -49,7 +49,7 @@ Versioning for its own tooling releases.
 - Dependabot version updates for Python development dependencies.
 
 - Reproducible, pinned Sonic 2 MD+ source conversion.
-- Rev 0 ROM checksum, signature, size, and SHA-256 verification.
+- Rev 1 ROM checksum, signature, size, and SHA-256 verification.
 - WAV normalization, sector-aligned trimming, loop candidate detection, loop
   scoring, CUE generation, and MiSTer package assembly.
 - Hardware-verified Emerald Hill loop metadata (`292 → 3892`).
@@ -61,7 +61,7 @@ Versioning for its own tooling releases.
 - Restore the level-select cheat and Death Egg ending transition through the
   pinned `msu-md-sonic2` source's four-byte game-mode dispatch repair, submitted
   upstream as ArcadeTV PR #5. Both REV00 and REV01 passed MiSTer hardware
-  verification; the repaired REV00 ROM is the audited production baseline.
+  verification; the repaired REV01 ROM is the audited production baseline.
 
 - Eliminate 33 ASL MOVEQ sign-extension warning sites through guarded symbolic
   signed-byte conversion, preserving the exact ROM and intentional odd-address access.
