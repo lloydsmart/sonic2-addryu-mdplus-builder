@@ -173,7 +173,7 @@ EXPECTED_CONVERSION_COUNTS = {
 UPSTREAM_HASHES = {
     "s2.macros.asm": "e2d1d1088abf377a6e20b888aab3a1e6815e6aea450884854c8bb5c9a11ffef6",
     "msu-md.asm": "724b846275876b823a59f5f41cc3d38a3976a75c4cecdf8f7f682e91bc73d288",
-    "s2.asm": "566a6a88517444ab4eec5c79f4b47fa5091e630cfbae7b1736cff42144fe8fda",
+    "s2.asm": "c8fb277c26965447f5e310bed1187c189b80671620d401a674b9a3f5619d7220",
     "s2.constants.asm": "597b9bca0b9f7f563dbda51d1f7fc1131ab07480d88a5e6d492cc5c2449d139e",
     "s2.sounddriver.asm": "7820f237ba3b4a1b3158341cbd55e5ac7b5073883de1e1c7cbf9f6dcedfa0fb9",
 }
@@ -183,35 +183,6 @@ def _replace_exact(text: str, old: str, new: str, count: int = 1) -> str:
     if text.count(old) != count:
         raise BuildError(f"Expected {count} upstream matches for {old!r}, got {text.count(old)}")
     return text.replace(old, new)
-
-
-def _repair_game_mode_dispatch(text: str) -> str:
-    """Restore ArcadeTV's fixed-width table and its tail-transfer contract.
-
-    apply_mdplus checks the whole pinned input hash first. Match the dispatch
-    and placement anchors as well, so changed or duplicated structures fail
-    before any prepared source is written.
-    """
-    dispatch = ("\tjsr\tGameModesArray(pc,d0.w)\t; jump to apt location in ROM\n"
-                "\tbra.s\tMainGameLoop\t; loop indefinitely\n")
-    mask = ("\tandi.w\t#$3C,d0\t; limit Game Mode value to $3C max "
-            "(change to a maximum of 7C to add more game modes)\n")
-    text = _replace_exact(text, mask + dispatch, mask + dispatch)
-    text = _replace_exact(
-        text,
-        "GameMode_2PResults:\tjsr\tTwoPlayerResults\t; 2P results mode\n",
-        "GameMode_2PResults:\tbra.w\tJmpTo_TwoPlayerResults\t; 2P results mode\n",
-    )
-    if re.search(r"(?m)^JmpTo_TwoPlayerResults\b", text):
-        raise BuildError("Unexpected existing JmpTo_TwoPlayerResults label")
-    # This wrapper ends in an unconditional JMP, after the complete game-mode
-    # table and checksum handler. A shim here has no fallthrough predecessor
-    # and is within BRA.W range; TwoPlayerResults itself is now out of range.
-    anchor = "LevelSelectMenu: ;;\n\tjmp\t(MenuScreen).l\n"
-    return _replace_exact(text, anchor, anchor + (
-        "\n; Keep game-mode slots four bytes and retain MainGameLoop's return address.\n"
-        "JmpTo_TwoPlayerResults:\n\tjmp\t(TwoPlayerResults).l\n"
-    ))
 
 
 def _hybrid_msu_source() -> str:
@@ -488,7 +459,7 @@ def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
     legacy_msu, legacy_counts = _convert_msu_source(originals["msu-md.asm"])
     outputs = {
         "msu-md.asm": _hybrid_msu_source(),
-        "s2.asm": _asl_s2_source(_repair_game_mode_dispatch(_hybrid_s2_source(originals["s2.asm"]))),
+        "s2.asm": _asl_s2_source(_hybrid_s2_source(originals["s2.asm"])),
         "s2.constants.asm": _asl_constants_source(originals["s2.constants.asm"]),
         "s2.macros.asm": _replace_exact(originals["s2.macros.asm"],
                                         "dc.ATTRIBUTE ptr-current_offset_table",
@@ -513,8 +484,6 @@ def apply_mdplus(source_dir: Path = SOURCE_DIR) -> dict[str, int]:
             accepted.add(_legacy_s2_source(originals[name]))
             accepted.add(_hybrid_s2_source(originals[name]))
             accepted.add(_asl_legacy_s2_source(_hybrid_s2_source(originals[name])))
-            # Exact previous audited conversion, before the gameplay repair.
-            accepted.add(_asl_s2_source(_hybrid_s2_source(originals[name])))
         if current not in accepted:
             raise BuildError(f"Source checkout has unexpected content: {name}")
     script = source_dir / "build.sh"

@@ -7,9 +7,13 @@ native SFX, and a deliberately missing Addryu-owned WAV.
 
 ## Source checkpoint and native semantics
 
-The transformation audits ArcadeTV commit
-`23d24dda3758a1fd341c01e7f7e94e11780a2608`. Whole-file hashes and exact replacement
-counts guard `s2.asm`, `s2.constants.asm`, `s2.sounddriver.asm` and `msu-md.asm`.
+The transformation audits `lloydsmart/msu-md-sonic2` commit
+`b49afdb010090c282e1bb79f18f14a32d1bb7a99`. Its parent is ArcadeTV commit
+`23d24dda3758a1fd341c01e7f7e94e11780a2608`; the fork commit adds the game-mode
+dispatch repair submitted upstream as
+[ArcadeTV PR #5](https://github.com/ArcadeTV/msu-md-sonic2/pull/5).
+Whole-file hashes and exact replacement counts guard `s2.asm`,
+`s2.constants.asm`, `s2.sounddriver.asm` and `msu-md.asm`.
 The earlier disassembly commit `ee1fc176dbf5a3e5f33129dd4b31f2893ebd1eb1`, present
 in the dependency's Git history, confirms the stock PlayMusic implementation:
 store d0 in the first mailbox if empty; otherwise replace the second mailbox.

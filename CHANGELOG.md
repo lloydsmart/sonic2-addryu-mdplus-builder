@@ -9,6 +9,11 @@ Versioning for its own tooling releases.
 
 ### Changed
 
+- Pin the Sonic source dependency to `lloydsmart/msu-md-sonic2` commit
+  `b49afdb010090c282e1bb79f18f14a32d1bb7a99`, which contains the game-mode
+  dispatch repair submitted upstream as ArcadeTV PR #5. Remove the duplicate
+  forge-side source rewrite while preserving the exact audited ROM bytes.
+
 - Mark all 16 enabled Addryu cues as MiSTer-hardware verified, preserving every
   loop point and WAV.
 - Promote the repaired REV00 ROM to the audited strict regression baseline:
@@ -53,10 +58,10 @@ Versioning for its own tooling releases.
 
 ### Fixed
 
-- Repair ArcadeTV's game-mode dispatch with a four-byte tail branch and nearby
-  trampoline, restoring the level-select cheat and Death Egg ending transition
-  in compiled regression tests and successful MiSTer hardware testing. The
-  repaired ROM is now the audited production baseline.
+- Restore the level-select cheat and Death Egg ending transition through the
+  pinned `msu-md-sonic2` source's four-byte game-mode dispatch repair, submitted
+  upstream as ArcadeTV PR #5. Both REV00 and REV01 passed MiSTer hardware
+  verification; the repaired REV00 ROM is the audited production baseline.
 
 - Eliminate 33 ASL MOVEQ sign-extension warning sites through guarded symbolic
   signed-byte conversion, preserving the exact ROM and intentional odd-address access.
