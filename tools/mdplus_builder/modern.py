@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from .common import BUILD, DEPENDENCIES, BuildError, load_json, require_program, run
+from .common import BUILD, DEPENDENCIES, ROM_PATH, BuildError, load_json, require_program, run
 from .source import ADDRYU_TRACKS, _clone_at, _git_output
 
 SOURCE_MODERN_DIR = BUILD / "source-modern"
@@ -71,6 +71,9 @@ MODERN_ROM_PATH = BUILD / "sonic2-modern-mdplus.md"
 PLAY_MUSIC_ADDRESS = 0x135E
 IMPLEMENTATION_ADDRESS = 0x100000
 PREPARED_ROM_SIZE = 0x200000
+PRODUCTION_CHECKSUM = "BE41"
+PRODUCTION_MD5 = "9eb40c0601a7c424a0d1ce168b5f40f2"
+PRODUCTION_SHA256 = "bd12138cd478596e4d294a06f573a98a6d37747dfe58d726ca62cf50dc3a8c44"
 NATIVE_PLAY_MUSIC = bytes.fromhex("4a38ffe0660611c0ffe04e7511c0ffe44e75")
 ROUTER_ADDRESS = 0x1003A8
 HOOK_BYTES = bytes.fromhex("4ef9") + ROUTER_ADDRESS.to_bytes(4, "big") + bytes.fromhex("4e71") * 6
@@ -526,7 +529,7 @@ def verify_modern_driver(data: bytes, assembled: bytes | None = None) -> dict[st
             "z80_loaded_sha256": hashlib.sha256(loaded).hexdigest()}
 
 
-def verify_modern(path: Path) -> dict[str, str | int]:
+def verify_modern(path: Path, *, strict_regression: bool = False) -> dict[str, str | int]:
     """Audit the live router, frozen backends, and every unchanged stock byte."""
     from .source import genesis_checksum
 
@@ -602,7 +605,7 @@ def verify_modern(path: Path) -> dict[str, str | int]:
         stock[start:end] = bytes(end - start)
     if hashlib.sha256(stock).hexdigest() != STOCK_MASKED_SHA256:
         raise BuildError("Modern MD+ changed bytes outside the audited stock regions")
-    return {
+    result = {
         "size": len(data), "header_checksum": f"{stored:04X}",
         "md5": hashlib.md5(data, usedforsecurity=False).hexdigest(),
         "sha256": hashlib.sha256(data).hexdigest(),
@@ -619,9 +622,14 @@ def verify_modern(path: Path) -> dict[str, str | int]:
         "router_sha256": hashlib.sha256(router).hexdigest(),
         **driver, **signatures,
     }
+    if strict_regression and (
+        result["header_checksum"], result["md5"], result["sha256"]
+    ) != (PRODUCTION_CHECKSUM, PRODUCTION_MD5, PRODUCTION_SHA256):
+        raise BuildError(f"Modern ROM differs from the audited Stage 5 production target: {result}")
+    return result
 
 
-def build_modern() -> dict[str, str | int]:
+def build_modern(output: Path = ROM_PATH) -> dict[str, str | int]:
     lua = require_program("lua")
     run([lua, "-e", 'local major, minor = _VERSION:match("(%d+)%.(%d+)"); '
          'assert(tonumber(major) > 5 or (tonumber(major) == 5 and tonumber(minor) >= 3), '
@@ -629,12 +637,17 @@ def build_modern() -> dict[str, str | int]:
     preparation = prepare_modern()
     run([lua, "modern_build.lua"], cwd=PREPARED_MODERN_DIR)
     built = PREPARED_MODERN_DIR / "s2built.bin"
-    result = verify_modern(built)
+    result = verify_modern(built, strict_regression=True)
     verify_modern_driver(built.read_bytes(), assembled_modern_driver(PREPARED_MODERN_DIR / "forge-s2.p"))
     symbols = modern_symbols(PREPARED_MODERN_DIR / "s2.lst")
     for name, address in (HANDOFF_ADDRESSES | ROUTER_ADDRESSES |
                           {n: a for n, (a, _) in RAM_STATE.items()}).items():
         if symbols.get(name) != address:
             raise BuildError(f"Modern audited symbol moved: {name}")
-    shutil.copy2(built, MODERN_ROM_PATH)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(built, output)
+    if output == ROM_PATH:
+        # Preserve the old development filename without a second ROM copy.
+        MODERN_ROM_PATH.unlink(missing_ok=True)
+        MODERN_ROM_PATH.symlink_to(ROM_PATH.name)
     return {**preparation, **result}
