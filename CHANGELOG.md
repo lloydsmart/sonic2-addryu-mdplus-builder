@@ -7,6 +7,13 @@ Versioning for its own tooling releases.
 
 ## [Unreleased]
 
+### Added
+
+- Explicit experimental `bootstrap-modern` and `build-stock-modern` commands
+  for pinned current sonicretro/s2disasm, using upstream's Lua build and exact
+  stock REV01 size, MD5, and SHA-256 verification. The modern source is not yet
+  MD+ capable; all production MD+ commands retain their existing source path.
+
 ## [1.0.0] - 2026-09-24
 
 ### Changed

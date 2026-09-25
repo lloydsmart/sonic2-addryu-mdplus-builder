@@ -1,8 +1,8 @@
 # Third-party notices
 
-This repository contains original build tooling and does not vendor the two
-source dependencies below. The bootstrap command fetches their exact pinned
-commits into the ignored `build/` directory.
+This repository contains original build tooling and does not vendor the
+source dependencies below. The explicit bootstrap commands fetch their exact
+pinned commits into the ignored `build/` directory.
 
 ## lloydsmart/msu-md-sonic2
 
@@ -18,6 +18,19 @@ repair used by this build. The project applies its deterministic MD+ conversion
 to a temporary checkout. The dependency may contain material whose rights are
 not granted merely by its repository license; users remain responsible for
 lawful use.
+
+## sonicretro/s2disasm (experimental stock build)
+
+- Repository: <https://github.com/sonicretro/s2disasm>
+- Pinned commit: `380f37a731bfc720bb0371a35a593184a7ec5e43`
+- Fetched only by `bootstrap-modern` into ignored `build/source-modern/`.
+
+The stock build uses upstream's `lua build.lua` and its bundled native build
+tools in a disposable clone. No source, tools, Sega assets, or generated ROMs
+are vendored or redistributed by Forge. The pinned upstream `readme.md`
+states that the material is for informational and educational purposes,
+prohibits commercial usage, and disclaims ownership and warranty. Forge's
+license does not grant rights to this dependency or the game assets.
 
 ## Macroassembler-AS/asl-releases
 
