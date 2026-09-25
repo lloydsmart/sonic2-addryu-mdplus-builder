@@ -9,6 +9,12 @@ Versioning for its own tooling releases.
 
 ### Added
 
+- Internal `prepare-modern` and `build-modern` migration scaffold with a fixed
+  PlayMusic trampoline and Forge-owned implementation in an appended ROM region.
+  All music remains native, with no runtime state or MD+ commands. Strict binary
+  checks and CPU tests protect native mailbox, register and condition-code
+  behaviour; stock modern and default production MD+ builds remain separate.
+
 - Explicit experimental `bootstrap-modern` and `build-stock-modern` commands
   for pinned current sonicretro/s2disasm, using upstream's Lua build and exact
   stock REV01 size, MD5, and SHA-256 verification. The modern source is not yet

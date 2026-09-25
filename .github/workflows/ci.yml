@@ -72,3 +72,7 @@ jobs:
         run: |
           python -m tools.mdplus_builder bootstrap-modern
           python -m tools.mdplus_builder build-stock-modern
+      - name: Validate modern adapter scaffold
+        run: |
+          python -m tools.mdplus_builder prepare-modern
+          python -m tools.mdplus_builder build-modern
