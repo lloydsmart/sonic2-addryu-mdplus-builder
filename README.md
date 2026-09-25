@@ -168,6 +168,82 @@ Only an exact audited stock REV01 match is copied to
 
 This experimental ROM is not used by the MD+ packaging or audio commands.
 
+## Internal modern adapter scaffold
+
+Stage 2 adds a separate prepared path for migration work. **This is only a
+native-music scaffold, not a usable modern MD+ build.** All music requests still
+use Sonic 2's native sound driver; modern MD+ playback and packaging are not
+implemented. The exact stock modern REV01 commands above remain available, and
+production MD+ remains the legacy/default path.
+
+```sh
+make prepare-modern
+make build-modern
+```
+
+Run `make bootstrap-modern` first. Preparation recreates ignored
+`build/prepared-modern/` from the pinned committed source, checks the audited
+`s2.asm` SHA-256 and exact replacement counts, then changes only `s2.asm` and
+adds Forge's `hybrid_modern.asm`. Local dependency edits and previous prepared
+output are excluded. `build-modern` always repeats preparation, invokes upstream
+`lua build.lua`, and copies only verified output to
+`build/sonic2-modern-scaffold.md`. These commands replace generated preparation;
+make source edits in Forge's transformer/include. They do not use the legacy
+ASL compatibility transformer or change either dependency checkout.
+
+The layout preserves all upstream code/data addresses:
+
+| ROM address | Stage 2 content |
+| --- | --- |
+| `$00135E` | Six-byte `JMP ($00100000).l` at `PlayMusic` |
+| `$001364`–`$00136F` | Six unreachable NOPs retaining the 18-byte footprint |
+| `$001370` | Unchanged `PlaySound` and all following upstream content |
+| `$0FFFEC`–`$0FFFFF` | Original end padding, after the final sound bank |
+| `$100000` | `ForgeModernPlayMusic`: original native mailbox instructions |
+| `$10000C` | `ForgeModernPlayMusicSecond`: second mailbox store and RTS |
+| `$100012` | `ForgeModernEnd`, followed by upstream power-of-two padding |
+| `$200000` | `EndOfRom` (exclusive); header ROM end is `$1FFFFF` |
+
+The include sits after the final `finishBank`, before upstream's final padding
+and `EndOfRom`. The dedicated appended region starts at `$100000`; even this
+small implementation therefore produces a 2 MiB ROM. Future implementation
+size must not grow the inline hook. The absolute jump avoids branch-range
+limits and adds no stack frame. No runtime RAM is allocated, and only
+`gameRevision=1`, `fixBugs=0`, `padToPowerOfTwo=1` is supported.
+
+The native routine writes `d0.b` to Music0 when empty, otherwise Music1. Data
+and address registers are preserved, with the normal RTS stack effect. The
+final MOVE sets N/Z from `d0.b`, clears V/C and preserves X; JMP and RTS leave
+those flags intact. SFX routing and the Z80 driver remain unchanged. There are
+no MD+ overlay/command writes, ownership state or private Z80 commands.
+
+Upstream fixes the header after assembly and sound-driver compression. Startup
+checksumming already reads the header ROM end, so it covers the expanded ROM
+without skipping or weakening validation. Forge checks the header checksum/end,
+exact hook and implementation bytes, zero padding and zero MD+ address/open/
+close signatures. It also restores only the allowed hook/header differences
+in memory and requires the original stock hashes. This whole-ROM comparison
+protects every other byte, beyond what a signature scan alone can establish.
+
+Audited Stage 2 output:
+
+- Size: `2,097,152` bytes; header checksum: `FF00`
+- MD5: `f0b5d8365af27adf0848f8d8731c7257`
+- SHA-256: `d768046bb10e623c44e88be7ab43e21bb98419a4c6a422d0a1c0fbe193df8cad`
+
+With the optional emulation environment described below, run:
+
+```sh
+PYTHONPATH=. build/emulation-venv/bin/python tests/check_modern_binary.py
+```
+
+This requires both modern ROM builds. It compares actual stock/scaffold code
+for all 256 request bytes, all 32 CCR inputs and both mailbox paths, plus every
+nonempty Music0 value. It checks registers, stack, condition codes and exact
+memory writes, including untouched SFX mailboxes. It does not model console
+interrupt timing or replace MiSTer verification; the trampoline adds one JMP's
+execution time.
+
 ## Assembler toolchain
 
 The assembler is ASL 1.42 build 306 from

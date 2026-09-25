@@ -25,7 +25,7 @@ from .common import (
     crc32,
     require_program,
 )
-from .modern import bootstrap_modern, build_stock_modern
+from .modern import bootstrap_modern, build_modern, build_stock_modern, prepare_modern
 from .package import assemble, cue_text
 from .source import apply_mdplus, bootstrap, build_rom, verify_rom
 
@@ -67,6 +67,9 @@ def parser() -> argparse.ArgumentParser:
     p = commands.add_parser("bootstrap-modern", help="fetch pinned experimental stock s2disasm source")
     p.add_argument("--local-source", type=_path, help="clone s2disasm from an existing local checkout")
     commands.add_parser("build-stock-modern", help="build and verify stock REV01 with upstream Lua (no MD+)")
+
+    commands.add_parser("prepare-modern", help="prepare the internal modern native-music scaffold (no MD+)")
+    commands.add_parser("build-modern", help="prepare, build and verify the modern scaffold (no MD+)")
 
     p = commands.add_parser("prepare-source", help="apply the deterministic MD+ source conversion")
     p.add_argument("--source-dir", type=_path, default=SOURCE_DIR)
@@ -150,6 +153,10 @@ def main(argv: list[str] | None = None) -> int:
             bootstrap_modern(local_source=args.local_source)
         elif args.command == "build-stock-modern":
             _print_json(build_stock_modern())
+        elif args.command == "prepare-modern":
+            _print_json(prepare_modern())
+        elif args.command == "build-modern":
+            _print_json(build_modern())
         elif args.command == "prepare-source":
             _print_json(apply_mdplus(args.source_dir))
         elif args.command == "build-rom":
