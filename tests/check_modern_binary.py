@@ -46,7 +46,7 @@ class NativeMachine:
     def write(self, cpu, access, address, size, value, user):
         self.writes.append((address & 0xFFFFFF, size, value))
 
-    def call(self, d0, music0, music1, ccr):
+    def call(self, d0, music0, music1, ccr, entry=modern.PLAY_MUSIC_ADDRESS):
         self.cpu.reg_write(UC_M68K_REG_SR, 0x2300 | ccr)
         for index, register in enumerate(self.REGISTERS):
             self.cpu.reg_write(register, 0x12340000 + index * 0x101)
@@ -57,13 +57,17 @@ class NativeMachine:
         self.cpu.mem_write(self.QUEUE, bytes([music0, 0x42, 0x81, 0xF7, music1]))
         self.cpu.mem_write(self.STACK, self.RETURN.to_bytes(4, 'big'))
         self.writes.clear()
-        self.cpu.emu_start(modern.PLAY_MUSIC_ADDRESS, self.RETURN + 2, count=16)
+        self.cpu.emu_start(entry, self.RETURN + 2, count=64)
         if self.cpu.reg_read(UC_M68K_REG_PC) != self.RETURN + 2:
-            raise AssertionError('PlayMusic failed to return directly to its caller')
+            raise AssertionError(f'Entry {entry:06X} failed to return directly to its caller')
         after = [self.cpu.reg_read(r) for r in self.REGISTERS]
         expected = before[:-1] + [self.STACK + 4]
         if after != expected:
             raise AssertionError(f'Register or stack corruption: {after} != {expected}')
+        if entry == modern.PLAY_MUSIC_ADDRESS and any(
+            address in (0x3F7FA, 0x3F7FE) for address, _, _ in self.writes
+        ):
+            raise AssertionError('Gameplay PlayMusic performed MD+ I/O')
         sr = int.from_bytes(self.cpu.mem_read(self.SNAPSHOT, 2), 'big')
         return bytes(self.cpu.mem_read(self.QUEUE, 5)), sr, list(self.writes), after
 
@@ -104,6 +108,54 @@ class ModernPlayMusicBinaryTests(unittest.TestCase):
                 self.assertEqual(prepared, stock)
                 self.assertEqual(prepared[0], bytes([music0, 0x42, 0x81, 0xF7, 0xF7]))
                 self.assertEqual(prepared[2][0], (0xFFFFE4, 1, 0xF7))
+
+
+class ModernBackendBinaryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        modern.verify_modern(modern.MODERN_ROM_PATH)
+        cls.machine = NativeMachine(modern.MODERN_ROM_PATH.read_bytes())
+
+    def check_command(self, entry, request, command, ccr):
+        queue, sr, writes, _ = self.machine.call(0xA5C30000 | request, 0x85, 0x99, ccr, entry)
+        expected_sr = 0x2304 | (ccr & 0x10)
+        transaction = [(0x3F7FA, 2, 0xCD54), (0x3F7FE, 2, command), (0x3F7FA, 2, 0)]
+        self.assertEqual(queue, bytes([0x85, 0x42, 0x81, 0xF7, 0x99]))
+        self.assertEqual(sr, expected_sr)
+        self.assertEqual(writes, transaction + [(NativeMachine.SNAPSHOT & 0xFFFFFF, 2, expected_sr)])
+        return transaction
+
+    def test_dispatch_all_supported_ids_and_ccr_inputs(self):
+        # Explicit independent request/track oracle; verifies compiled compares
+        # and branch targets, rather than reusing the source generator's policy.
+        routes = {0x82: 3, 0x8E: 5, 0x87: 7, 0x89: 8, 0x86: 9, 0x8B: 10,
+                  0x84: 11, 0x85: 12, 0x8D: 13, 0x8F: 14, 0x8A: 15,
+                  0x92: 29, 0x8C: 26, 0x88: 27, 0x83: 28, 0x90: 31}
+        for request, track in routes.items():
+            for ccr in range(32):
+                with self.subTest(request=request, ccr=ccr):
+                    self.check_command(modern.DISPATCH_ADDRESS, request, 0x1200 | track, ccr)
+            print(f'Dispatch ${request:02X} -> track {track:02d}: CD54 -> {0x1200 | track:04X} -> 0000')
+
+    def test_every_unsupported_byte_has_no_mdplus_or_mailbox_writes(self):
+        supported = {0x82, 0x8E, 0x87, 0x89, 0x86, 0x8B, 0x84, 0x85,
+                     0x8D, 0x8F, 0x8A, 0x92, 0x8C, 0x88, 0x83, 0x90}
+        for request in set(range(256)) - supported:
+            for ccr in range(32):
+                with self.subTest(request=request, ccr=ccr):
+                    queue, sr, writes, _ = self.machine.call(
+                        0xDEADBE00 | request, 0x85, 0x99, ccr, modern.DISPATCH_ADDRESS)
+                    self.assertEqual(queue, bytes([0x85, 0x42, 0x81, 0xF7, 0x99]))
+                    self.assertEqual(sr & 0x10, ccr & 0x10)
+                    self.assertEqual(writes, [(NativeMachine.SNAPSHOT & 0xFFFFFF, 2, sr)])
+
+    def test_control_primitives_exact_traces_and_ccr(self):
+        for index, command in enumerate((0x1300, 0x1328, 0x1400, 0x1519, 0x15FF)):
+            entry = 0x100094 + index * 26
+            for ccr in range(32):
+                with self.subTest(command=command, ccr=ccr):
+                    self.check_command(entry, 0xF7, command, ccr)
+            print(f'Control ${entry:06X}: CD54 -> {command:04X} -> 0000')
 
 
 if __name__ == '__main__':

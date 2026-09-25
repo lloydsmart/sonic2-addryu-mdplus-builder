@@ -170,10 +170,12 @@ This experimental ROM is not used by the MD+ packaging or audio commands.
 
 ## Internal modern adapter scaffold
 
-Stage 2 adds a separate prepared path for migration work. **This is only a
-native-music scaffold, not a usable modern MD+ build.** All music requests still
-use Sonic 2's native sound driver; modern MD+ playback and packaging are not
-implemented. The exact stock modern REV01 commands above remain available, and
+Stage 3 extends the separate prepared migration path with MD+ command primitives
+and the fixed sixteen-track Addryu dispatcher. **Normal gameplay still uses
+native Sonic 2 music. The MD+ backend is intentionally not live, and this is not
+a playable Addryu MD+ build.** Stage 4 will add native→MD+ music-only handoff,
+acknowledgement and ownership before connecting the backend to gameplay.
+The exact stock modern REV01 commands above remain available, and
 production MD+ remains the legacy/default path.
 
 ```sh
@@ -193,7 +195,7 @@ ASL compatibility transformer or change either dependency checkout.
 
 The layout preserves all upstream code/data addresses:
 
-| ROM address | Stage 2 content |
+| ROM address | Stage 3 content |
 | --- | --- |
 | `$00135E` | Six-byte `JMP ($00100000).l` at `PlayMusic` |
 | `$001364`–`$00136F` | Six unreachable NOPs retaining the 18-byte footprint |
@@ -201,7 +203,14 @@ The layout preserves all upstream code/data addresses:
 | `$0FFFEC`–`$0FFFFF` | Original end padding, after the final sound bank |
 | `$100000` | `ForgeModernPlayMusic`: original native mailbox instructions |
 | `$10000C` | `ForgeModernPlayMusicSecond`: second mailbox store and RTS |
-| `$100012` | `ForgeModernEnd`, followed by upstream power-of-two padding |
+| `$100012` | `ForgeModernNativeEnd` / `ForgeModernDispatch` (internal, disconnected) |
+| `$100094` | `ForgeModernImmediate` (`$1300`) |
+| `$1000AE` | `ForgeModernFade` (`$1328`) |
+| `$1000C8` | `ForgeModernResume` (`$1400`) |
+| `$1000E2` | `ForgeModernVolumeLow` (`$1519`) |
+| `$1000FC` | `ForgeModernVolumeNormal` (`$15FF`) |
+| `$100116`–`$1002B5` | Sixteen track primitives; each is 26 bytes |
+| `$1002B6` | `ForgeModernEnd`, followed by zero padding |
 | `$200000` | `EndOfRom` (exclusive); header ROM end is `$1FFFFF` |
 
 The include sits after the final `finishBank`, before upstream's final padding
@@ -214,22 +223,67 @@ limits and adds no stack frame. No runtime RAM is allocated, and only
 The native routine writes `d0.b` to Music0 when empty, otherwise Music1. Data
 and address registers are preserved, with the normal RTS stack effect. The
 final MOVE sets N/Z from `d0.b`, clears V/C and preserves X; JMP and RTS leave
-those flags intact. SFX routing and the Z80 driver remain unchanged. There are
-no MD+ overlay/command writes, ownership state or private Z80 commands.
+those flags intact. SFX routing and the Z80 driver remain unchanged. Normal
+PlayMusic performs no MD+ writes for any request. The dispatcher is a separate
+internal entry point; nothing in the game calls it. No ownership, pending-track,
+pause, handoff or acknowledgement state is allocated, and no private Z80
+commands or temporary native-audio silencing mechanism are introduced.
+
+Preparation generates the dispatcher and track primitives from the production
+`source.py` `ADDRYU_TRACKS` constant, consumed read-only. Each supported request
+branches to a primitive issuing `$1200 | track`, the production loop/play
+command. Unsupported IDs return without writes. Tracks 33–48 and Speed Shoes
+variants are absent. Every primitive uses three immediately adjacent absolute
+word stores: `$CD54` to `$0003F7FA`, its command to `$0003F7FE`, then zero to
+`$0003F7FA`. Each transaction opens and closes its own overlay.
+
+The internal backend takes `d0.b` and preserves data/address registers, with the
+normal RTS stack effect. Its CCR is scratch, with X preserved; supported routes
+and controls finish with N=V=C=0 and Z=1. Native PlayMusic retains stock CCR
+behaviour. Assembler assertions protect the native routine, dispatcher, every
+primitive entry and the final extension boundary. Dispatcher branches use
+assembler-resolved word displacements.
+
+| Music ID | Request byte | MD+ track | Primitive address |
+| --- | --- | --- | --- |
+| `MusID_EHZ` | `$82` | 3 | `$100116` |
+| `MusID_CPZ` | `$8E` | 5 | `$100130` |
+| `MusID_ARZ` | `$87` | 7 | `$10014A` |
+| `MusID_CNZ` | `$89` | 8 | `$100164` |
+| `MusID_HTZ` | `$86` | 9 | `$10017E` |
+| `MusID_MCZ` | `$8B` | 10 | `$100198` |
+| `MusID_OOZ` | `$84` | 11 | `$1001B2` |
+| `MusID_MTZ` | `$85` | 12 | `$1001CC` |
+| `MusID_SCZ` | `$8D` | 13 | `$1001E6` |
+| `MusID_WFZ` | `$8F` | 14 | `$100200` |
+| `MusID_DEZ` | `$8A` | 15 | `$10021A` |
+| `MusID_SpecStage` | `$92` | 29 | `$100234` |
+| `MusID_EHZ_2P` | `$8C` | 26 | `$10024E` |
+| `MusID_CNZ_2P` | `$88` | 27 | `$100268` |
+| `MusID_MCZ_2P` | `$83` | 28 | `$100282` |
+| `MusID_HPZ` | `$90` | 31 | `$10029C` |
+
+Track labels are `ForgeModernTrackNN`, using the two-digit decimal track number.
 
 Upstream fixes the header after assembly and sound-driver compression. Startup
 checksumming already reads the header ROM end, so it covers the expanded ROM
 without skipping or weakening validation. Forge checks the header checksum/end,
-exact hook and implementation bytes, zero padding and zero MD+ address/open/
-close signatures. It also restores only the allowed hook/header differences
-in memory and requires the original stock hashes. This whole-ROM comparison
+exact hook and native implementation bytes, and every backend instruction,
+operand, branch target and RTS against an independent encoding audit. There are
+exactly 21 adjacent open/command/close transactions (16 plays and 5 controls),
+with no orphan stores. Only zero padding may follow the extension. It also
+restores only the allowed hook/header differences in memory and requires the
+original stock hashes. This whole-ROM comparison
 protects every other byte, beyond what a signature scan alone can establish.
 
-Audited Stage 2 output:
+Audited Stage 3 output:
 
-- Size: `2,097,152` bytes; header checksum: `FF00`
-- MD5: `f0b5d8365af27adf0848f8d8731c7257`
-- SHA-256: `d768046bb10e623c44e88be7ab43e21bb98419a4c6a422d0a1c0fbe193df8cad`
+- Size: `2,097,152` bytes; header checksum: `826E`
+- MD5: `20ef5970131d93f6e3032409823e7718`
+- SHA-256: `665ec414a457c34e6a7c79518c98948edf01bc11acbaa29b26044bf10edf0c01`
+
+The 694-byte extension (`$100000`–`$1002B5`) has SHA-256
+`a42fecc8e83354d76638f42de8810bbfaa678d54c77b8ae1051a261af26103f1`.
 
 With the optional emulation environment described below, run:
 
@@ -240,8 +294,13 @@ PYTHONPATH=. build/emulation-venv/bin/python tests/check_modern_binary.py
 This requires both modern ROM builds. It compares actual stock/scaffold code
 for all 256 request bytes, all 32 CCR inputs and both mailbox paths, plus every
 nonempty Music0 value. It checks registers, stack, condition codes and exact
-memory writes, including untouched SFX mailboxes. It does not model console
-interrupt timing or replace MiSTer verification; the trampoline adds one JMP's
+memory writes, including untouched SFX mailboxes and zero gameplay MD+ writes.
+It also executes the disconnected dispatcher for all 256 bytes and all 32 CCR
+inputs, checking every supported route and every unsupported ID, plus direct
+traces of all five controls. Backend calls preserve registers and mailboxes.
+Normal unit tests enforce route parity and layout/transaction policy, including
+rejection of tampered ROMs whose signature counts still match. It does not model
+console interrupt timing or replace MiSTer verification; the trampoline adds one JMP's
 execution time.
 
 ## Assembler toolchain

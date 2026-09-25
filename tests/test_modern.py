@@ -220,7 +220,7 @@ class ModernAdapterTests(unittest.TestCase):
                 self.assertEqual((prepared / 's2.sounddriver.asm').read_bytes(), b'unchanged Z80')
                 self.assertEqual(result['source_commit'], modern.AUDITED_MODERN_COMMIT)
                 self.assertEqual((prepared / 'hybrid_modern.asm').read_bytes(),
-                                 Path(modern.__file__).with_name('hybrid_modern.asm').read_bytes())
+                                 modern._modern_extension_source().encode())
             self.assertEqual((checkout / 's2.asm').read_bytes(), b'local edits must not be used')
 
     def test_prepare_rejects_missing_source_wrong_head_and_changed_pin(self) -> None:
@@ -275,6 +275,50 @@ class ModernAdapterTests(unittest.TestCase):
                 self.assertEqual(output.read_bytes(), b'new output')
 
 
+class ModernBackendPolicyTests(unittest.TestCase):
+    def test_routes_match_production_and_fixed_stage3_contract(self) -> None:
+        expected = (
+            ("MusID_EHZ", 3), ("MusID_CPZ", 5), ("MusID_ARZ", 7), ("MusID_CNZ", 8),
+            ("MusID_HTZ", 9), ("MusID_MCZ", 10), ("MusID_OOZ", 11), ("MusID_MTZ", 12),
+            ("MusID_SCZ", 13), ("MusID_WFZ", 14), ("MusID_DEZ", 15), ("MusID_SpecStage", 29),
+            ("MusID_EHZ_2P", 26), ("MusID_CNZ_2P", 27), ("MusID_MCZ_2P", 28), ("MusID_HPZ", 31),
+        )
+        self.assertEqual(modern.ADDRYU_TRACKS, source.ADDRYU_TRACKS)
+        self.assertEqual(modern.ADDRYU_TRACKS, expected)
+        text = modern._modern_extension_source()
+        for symbol, track in expected:
+            self.assertIn(f'cmp.b   #{symbol},d0\n    beq.w   ForgeModernTrack{track:02d}', text)
+        self.assertEqual(text.count('cmp.b'), 16)
+        self.assertEqual(text.count('move.w  #$CD54,(MDP_CTRL).l'), 21)
+        self.assertEqual(text.count('(MDP_CMD).l'), 21)
+        self.assertEqual(text.count('move.w  #0,(MDP_CTRL).l'), 21)
+        self.assertNotIn('@DISPATCH@', text)
+        self.assertNotIn('@COMMANDS@', text)
+        self.assertNotIn('ForgeModernDispatch', text.split('ForgeModernNativeEnd:')[0])
+
+    def test_binary_contract_has_only_adjacent_transactions_at_fixed_boundaries(self) -> None:
+        extension = modern.expected_modern_extension()
+        self.assertEqual(len(extension), 0x2B6)
+        self.assertEqual(extension[:18], modern.NATIVE_PLAY_MUSIC)
+        self.assertEqual(modern.DISPATCH_ADDRESS, 0x100012)
+        self.assertEqual(modern.PRIMITIVES_ADDRESS, 0x100094)
+        self.assertEqual(modern.IMPLEMENTATION_END, 0x1002B6)
+        self.assertEqual([c for _, c in modern.CONTROL_COMMANDS],
+                         [0x1300, 0x1328, 0x1400, 0x1519, 0x15FF])
+        commands = []
+        for offset in range(0x94, 0x2B6, 26):
+            transaction = extension[offset:offset + 26]
+            self.assertEqual(transaction[:8], modern.OVERLAY_OPEN)
+            self.assertEqual(transaction[8:10], bytes.fromhex('33fc'))
+            self.assertEqual(transaction[12:16], bytes.fromhex('0003f7fe'))
+            self.assertEqual(transaction[16:24], modern.OVERLAY_CLOSE)
+            self.assertEqual(transaction[24:], bytes.fromhex('4e75'))
+            commands.append(int.from_bytes(transaction[10:12], 'big'))
+        self.assertEqual(commands[5:], [0x1200 | t for _, t in source.ADDRYU_TRACKS])
+        self.assertEqual(len(set(commands)), 21)
+        self.assertFalse(set(commands) & set(range(0x1221, 0x1231)))
+
+
 class ModernBinaryVerificationTests(unittest.TestCase):
     def test_only_audited_changes_are_allowed(self) -> None:
         # Entirely synthetic baseline: identity expectations are patched, while
@@ -287,7 +331,7 @@ class ModernBinaryVerificationTests(unittest.TestCase):
         data = stock + bytearray(modern.PREPARED_ROM_SIZE - len(stock))
         data[start:start + 18] = modern.HOOK_BYTES
         end = modern.IMPLEMENTATION_ADDRESS
-        data[end:end + 18] = modern.NATIVE_PLAY_MUSIC
+        data[end:modern.IMPLEMENTATION_END] = modern.expected_modern_extension()
         data[0x1A4:0x1A8] = (len(data) - 1).to_bytes(4, 'big')
 
         def checksum(rom):
@@ -303,8 +347,8 @@ class ModernBinaryVerificationTests(unittest.TestCase):
             path.write_bytes(data)
             result = modern.verify_modern(path)
             self.assertEqual(result['size'], 0x200000)
-            self.assertEqual(result['command_address_signatures'], 0)
-            self.assertEqual(result['overlay_address_signatures'], 0)
+            self.assertEqual(result['command_address_signatures'], 21)
+            self.assertEqual(result['overlay_address_signatures'], 42)
             self.assertEqual(result['md5'], hashlib.md5(data, usedforsecurity=False).hexdigest())
             self.assertEqual(result['sha256'], hashlib.sha256(data).hexdigest())
             for offset, value, error in (
@@ -312,7 +356,9 @@ class ModernBinaryVerificationTests(unittest.TestCase):
                 (start, b'\x00', 'absolute jump'),
                 (0x2000, modern.HOOK_BYTES, 'duplicated'),
                 (end, b'\x00', 'mailbox implementation'),
-                (end + 18, b'\x01', 'zero padding'),
+                (modern.IMPLEMENTATION_END, b'\x01', 'zero padding'),
+                (end + 18, b'\x01', 'audited instructions'),
+                (end + 25, b'\x00', 'audited instructions'),
                 (0x2000, bytes.fromhex('0003f7fa'), 'MD\\+ signature'),
                 (0x2000, bytes.fromhex('0003f7fe'), 'MD\\+ signature'),
                 (0x2000, b'\x01', 'outside the audited'),
@@ -324,6 +370,36 @@ class ModernBinaryVerificationTests(unittest.TestCase):
                     path.write_bytes(bad)
                     with self.assertRaisesRegex(BuildError, error):
                         modern.verify_modern(path)
+            base = modern.PRIMITIVES_ADDRESS
+            mutations = []
+            for left, right, width in ((base, base + 8, 8), (base, base + 26, 26),
+                                       (base + 8, base + 16, 8)):
+                bad = bytearray(data)
+                bad[left:left + width], bad[right:right + width] = (
+                    bad[right:right + width], bad[left:left + width])
+                mutations.append(bad)
+            for offset in (base + 24, modern.DISPATCH_ADDRESS + 4):
+                bad = bytearray(data)
+                bad[offset] ^= 1
+                mutations.append(bad)
+            for bad in mutations:
+                checksum(bad)
+                path.write_bytes(bad)
+                with self.assertRaisesRegex(BuildError, 'audited instructions'):
+                    modern.verify_modern(path)
+            # Forbidden Speed Shoes route, missing close and orphan open/close.
+            for offset, replacement in (
+                (base + 5 * 26 + 10, bytes.fromhex('1221')),
+                (base + 16, bytes.fromhex('4e71') * 4),
+                (modern.IMPLEMENTATION_END, modern.OVERLAY_OPEN),
+                (modern.IMPLEMENTATION_END, modern.OVERLAY_CLOSE),
+            ):
+                bad = bytearray(data)
+                bad[offset:offset + len(replacement)] = replacement
+                checksum(bad)
+                path.write_bytes(bad)
+                with self.assertRaisesRegex(BuildError, 'MD\\+ signature'):
+                    modern.verify_modern(path)
             bad = bytearray(data)
             bad[0x18E] ^= 1
             path.write_bytes(bad)
