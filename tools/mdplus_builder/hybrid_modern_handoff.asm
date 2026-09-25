@@ -1,4 +1,4 @@
-; Stage 4 internal API. Gameplay PlayMusic has no path to BeginHandoff.
+; Stage 4 internal API with Stage 5 completion callback.
 ; All routines preserve registers unless documented; CCR is scratch.
 ; BeginHandoff/QueueStop require interrupts masked, as in production routing.
 ; CheckReady and Input require the caller to hold the Z80 bus (stock VInt).
@@ -41,8 +41,7 @@ ForgeModernCheckReady:
     clr.b   (Z80_RAM+zHybridAck).l
     cmpi.b  #2,(ForgeModernHandoff).w
     bne.s   .retry ; stale ACK must not cancel a waiting request
-    clr.b   (ForgeModernHandoff).w
-    rts
+    jmp     (ForgeModernComplete).l ; same six bytes; Stage 4 labels stay fixed
 .retry:
     cmpi.b  #1,(ForgeModernHandoff).w
     beq.s   ForgeModernQueueStop

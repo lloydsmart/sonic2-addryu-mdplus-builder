@@ -9,6 +9,17 @@ Versioning for its own tooling releases.
 
 ### Added
 
+- Experimental Stage 5 modern live MD+ routing with acknowledged native-to-MD+
+  ownership transfer, native temporary cues, pause/resume, fade/stop, and
+  255-VInt extra-life ducking through all six upstream paths. Fixed-size
+  PlaySound/PlaySound2, VInt, reset and direct pause hooks preserve upstream
+  layout. The Stage 3 primitives and Stage 4 Z80 image remain byte-identical.
+  Exact binary audits and compiled CPU tests cover the new layer. Output is
+  `build/sonic2-modern-mdplus.md`; legacy defaults and packaging are unchanged.
+  The required MiSTer FPGA hardware gate has passed, covering native/MD+
+  transitions, SFX, controls, progression, warm reset and Death Egg/ending.
+  The optional missing-WAV robustness test was not run.
+
 - Inert Stage 4 modern music-only Z80 handoff using private F7 and ACK A5.
   Native gameplay and the disconnected Stage 3 MD+ backend are preserved.
   Hash-locked preparation audits all three changed upstream files. Compiled
