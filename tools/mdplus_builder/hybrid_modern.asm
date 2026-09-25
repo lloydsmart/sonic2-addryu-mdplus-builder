@@ -1,4 +1,4 @@
-; Stage 3: native-only gameplay seam plus disconnected MD+ backend. No RAM state.
+; Stage 4: unchanged native gameplay seam and disconnected Stage 3 backend.
 ; Included AFTER the last sound bank, BEFORE upstream padding and EndOfRom.
     if (gameRevision<>1)||(fixBugs<>0)||(padToPowerOfTwo<>1)
         fatal "Forge modern scaffold requires REV01, fixBugs=0 and power-of-two padding"
@@ -23,8 +23,8 @@ ForgeModernNativeEnd:
         fatal "Unexpected Stage 2 implementation layout"
     endif
 
-; Internal backend API only. Stage 4 must provide the music-only Z80 handoff
-; before connecting this dispatcher to gameplay. Input d0.b; preserves all
+; Internal backend API only. Stage 5 will connect ownership and routing.
+; The Stage 4 handoff below does not call this dispatcher. Input d0.b; preserves all
 ; data/address registers, normal RTS stack effect. CCR is scratch (X preserved).
 ; Unsupported IDs return without any write. No persistent state is allocated.
 MDP_CTRL = $0003F7FA
@@ -43,3 +43,5 @@ ForgeModernEnd:
     if ForgeModernEnd>$200000
         fatal "Forge modern backend exceeds the appended region"
     endif
+
+    include "hybrid_modern_handoff.asm"

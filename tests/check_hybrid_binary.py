@@ -28,8 +28,7 @@ SOURCE = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('build/source')
 
 class Machine:
     def __init__(self, source=SOURCE):
-        self.symbols = {k: int(v, 16) & 0xFFFFFF for k, v in re.findall(
-            r'(\S+)\s+Int\s+([0-9A-F]+)\s', (source / 's2.map').read_text(errors='replace'))}
+        self.symbols = self.read_symbols(source)
         self.rom = (source / 's2built.bin').read_bytes()
         self.cpu = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
         self.cpu.ctl_set_cpu_model(UC_CPU_M68K_M68000)
@@ -48,6 +47,11 @@ class Machine:
         self.loaded = self.cpu.reg_read(UC_M68K_REG_A5) - 0xA00000
         self.z80.memory[:0x2000] = self.cpu.mem_read(0xA00000, 0x2000)
         self.setz('zAbsVar.QueueToPlay', 0x80)
+
+    @staticmethod
+    def read_symbols(source):
+        return {k: int(v, 16) & 0xFFFFFF for k, v in re.findall(
+            r'(\S+)\s+Int\s+([0-9A-F]+)\s', (source / 's2.map').read_text(errors='replace'))}
 
     def write68(self, cpu, access, address, size, value, user):
         physical = address & 0xFFFFFF

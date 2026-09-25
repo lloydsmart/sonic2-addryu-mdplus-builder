@@ -104,11 +104,13 @@ class ModernSourceTests(unittest.TestCase):
                     self.assertFalse((cwd / 's2built.bin').exists())
                     self.assertEqual(args, ['/usr/bin/lua', 'build.lua'])
                     (cwd / 's2built.bin').write_bytes(b'new output')
+                    (cwd / 's2.lst').write_text('synthetic symbols')
 
             with (
                 patch.object(modern, 'BUILD', root),
                 patch.object(modern, 'SOURCE_MODERN_DIR', checkout),
                 patch.object(modern, 'STOCK_MODERN_ROM_PATH', output),
+                patch.object(modern, 'STOCK_MODERN_LISTING_PATH', root / 'stock.lst'),
                 patch.object(modern, 'require_program', return_value='/usr/bin/lua'),
                 patch.object(modern, '_git_output', return_value=load_json(DEPENDENCIES)['source_modern']['commit']),
                 patch.object(modern, '_clone_at', side_effect=clone),
@@ -161,7 +163,11 @@ class StockVerificationTests(unittest.TestCase):
 
 class ModernAdapterTests(unittest.TestCase):
     # Synthetic structure, not an upstream source/asset fixture.
-    fixture = (modern.NATIVE_SOURCE + '\nunchanged body\n' + modern.TAIL_SOURCE + 'EndOfRom:\n').encode()
+    fixture = (modern.NATIVE_SOURCE + '\nunchanged body\n' + modern.INPUT_START + 'synthetic input body\n' +
+               modern.INPUT_END + modern.LOADER_SOURCE + '\n' + modern.TAIL_SOURCE + 'EndOfRom:\n').encode()
+    z80_fixture = (modern.Z80_READY + modern.Z80_PAUSE + '\nzTracksSaveEnd:\n' +
+                   '\tensure1byteoffset 8\nzVolTLMaskTbl:\n' + "; end of Z80 'ROM'").encode()
+    constants_fixture = modern.RAM_HOLE.encode()
 
     def test_exact_transform_has_one_small_hook_and_one_late_include(self) -> None:
         with patch.object(modern, 'UPSTREAM_S2_SHA256', hashlib.sha256(self.fixture).hexdigest()):
@@ -177,7 +183,8 @@ class ModernAdapterTests(unittest.TestCase):
     def test_unexpected_hash_and_missing_or_duplicate_patterns_fail(self) -> None:
         with self.assertRaisesRegex(BuildError, 'structure changed'):
             modern._prepare_modern_source(self.fixture)
-        for old in (modern.NATIVE_SOURCE, modern.TAIL_SOURCE):
+        for old in (modern.NATIVE_SOURCE, modern.TAIL_SOURCE, modern.INPUT_START, modern.INPUT_END,
+                    modern.LOADER_SOURCE):
             for replacement in ('', old + old):
                 bad = self.fixture.replace(old.encode(), replacement.encode())
                 with (
@@ -200,7 +207,8 @@ class ModernAdapterTests(unittest.TestCase):
                 self.assertFalse(destination.exists())
                 destination.mkdir()
                 (destination / 's2.asm').write_bytes(self.fixture)
-                (destination / 's2.sounddriver.asm').write_bytes(b'unchanged Z80')
+                (destination / 's2.sounddriver.asm').write_bytes(self.z80_fixture)
+                (destination / 's2.constants.asm').write_bytes(self.constants_fixture)
 
             with (
                 patch.object(modern, 'BUILD', root),
@@ -209,6 +217,8 @@ class ModernAdapterTests(unittest.TestCase):
                 patch.object(modern, '_git_output', return_value=modern.AUDITED_MODERN_COMMIT),
                 patch.object(modern, '_clone_at', side_effect=clone),
                 patch.object(modern, 'UPSTREAM_S2_SHA256', hashlib.sha256(self.fixture).hexdigest()),
+                patch.object(modern, 'UPSTREAM_Z80_SHA256', hashlib.sha256(self.z80_fixture).hexdigest()),
+                patch.object(modern, 'UPSTREAM_CONSTANTS_SHA256', hashlib.sha256(self.constants_fixture).hexdigest()),
             ):
                 result = modern.prepare_modern()
                 first = (prepared / 's2.asm').read_bytes()
@@ -217,7 +227,8 @@ class ModernAdapterTests(unittest.TestCase):
                 self.assertEqual(modern.prepare_modern(), result)
                 self.assertEqual((prepared / 's2.asm').read_bytes(), first)
                 self.assertFalse((prepared / 's2built.bin').exists())
-                self.assertEqual((prepared / 's2.sounddriver.asm').read_bytes(), b'unchanged Z80')
+                self.assertEqual((prepared / 's2.sounddriver.asm').read_bytes(),
+                                 modern._prepare_modern_source(self.z80_fixture, 's2.sounddriver.asm'))
                 self.assertEqual(result['source_commit'], modern.AUDITED_MODERN_COMMIT)
                 self.assertEqual((prepared / 'hybrid_modern.asm').read_bytes(),
                                  modern._modern_extension_source().encode())
@@ -262,12 +273,15 @@ class ModernAdapterTests(unittest.TestCase):
                 patch.object(modern, 'prepare_modern', return_value={'source_commit': 'pin'}) as prepare,
                 patch.object(modern, 'run') as run,
                 patch.object(modern, 'verify_modern', side_effect=BuildError('invalid')) as verify,
+                patch.object(modern, 'verify_modern_driver'),
+                patch.object(modern, 'assembled_modern_driver', return_value=b'synthetic'),
+                patch.object(modern, 'modern_symbols', return_value=modern.HANDOFF_ADDRESSES),
             ):
                 with self.assertRaisesRegex(BuildError, 'invalid'):
                     modern.build_modern()
                 self.assertEqual(output.read_bytes(), b'previous output')
                 prepare.assert_called_once_with()
-                run.assert_called_with(['/usr/bin/lua', 'build.lua'], cwd=work)
+                run.assert_called_with(['/usr/bin/lua', 'modern_build.lua'], cwd=work)
                 verify.assert_called_once_with(work / 's2built.bin')
                 verify.side_effect = None
                 verify.return_value = {'size': 10}
@@ -333,6 +347,16 @@ class ModernBinaryVerificationTests(unittest.TestCase):
         end = modern.IMPLEMENTATION_ADDRESS
         data[end:modern.IMPLEMENTATION_END] = modern.expected_modern_extension()
         data[0x1A4:0x1A8] = (len(data) - 1).to_bytes(4, 'big')
+        data[0x1084:0x108A] = bytes.fromhex('4ef9') + modern.HANDOFF_ADDRESSES['ForgeModernInput'].to_bytes(4, 'big')
+        helper = modern.HANDOFF_ADDRESSES['ForgeModernSaxGetByte']
+        from tools.mdplus_builder.driver import LOADER_READ
+        data[helper:helper + len(LOADER_READ)] = LOADER_READ
+        data[0xEC0DE:modern.DRIVER_START] = bytes.fromhex('4ef9') + helper.to_bytes(4, 'big') + bytes.fromhex('4e714e71')
+        data[modern.DRIVER_LENGTH_ADDRESS:modern.DRIVER_LENGTH_ADDRESS + 2] = b'\x00\x02'
+        data[modern.DRIVER_START:modern.DRIVER_START + 2] = b'\x01\xc9'
+        normalized = bytearray(stock)
+        for start_region, end_region in modern.STOCK_CHANGED_REGIONS:
+            normalized[start_region:end_region] = bytes(end_region - start_region)
 
         def checksum(rom):
             rom[0x18E:0x190] = source.genesis_checksum(rom)[1].to_bytes(2, 'big')
@@ -342,10 +366,19 @@ class ModernBinaryVerificationTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as directory,
             patch.object(modern, 'STOCK_ROM_MD5', hashlib.md5(stock, usedforsecurity=False).hexdigest()),
             patch.object(modern, 'STOCK_ROM_SHA256', hashlib.sha256(stock).hexdigest()),
+            patch.object(modern, 'STOCK_MASKED_SHA256', hashlib.sha256(normalized).hexdigest()),
+            patch.object(modern, 'HANDOFF_SHA256', hashlib.sha256(data[modern.IMPLEMENTATION_END:modern.HANDOFF_END]).hexdigest()),
+            patch.object(modern, 'DRIVER_REGION_SHA256', hashlib.sha256(data[modern.DRIVER_START:modern.DRIVER_LIMIT]).hexdigest()),
+            patch.object(modern, 'Z80_COMPRESSED_SIZE', 2),
+            patch.object(modern, 'Z80_LOADED_SIZE', 1),
+            patch.object(modern, 'Z80_SHA256', hashlib.sha256(b'\xc9').hexdigest()),
         ):
             path = Path(directory) / 'synthetic.md'
             path.write_bytes(data)
             result = modern.verify_modern(path)
+            modern.verify_modern_driver(data, b'\xc9')
+            with self.assertRaisesRegex(BuildError, 'assembler object'):
+                modern.verify_modern_driver(data, b'incomplete object')
             self.assertEqual(result['size'], 0x200000)
             self.assertEqual(result['command_address_signatures'], 21)
             self.assertEqual(result['overlay_address_signatures'], 42)
@@ -356,7 +389,14 @@ class ModernBinaryVerificationTests(unittest.TestCase):
                 (start, b'\x00', 'absolute jump'),
                 (0x2000, modern.HOOK_BYTES, 'duplicated'),
                 (end, b'\x00', 'mailbox implementation'),
-                (modern.IMPLEMENTATION_END, b'\x01', 'zero padding'),
+                (modern.HANDOFF_END, b'\x01', 'zero padding'),
+                (modern.IMPLEMENTATION_END, b'\x01', 'handoff differs'),
+                (0x1084, b'\x00', 'input trampoline'),
+                (0xEC0DE, b'\x00', 'loader trampoline'),
+                (modern.DRIVER_LENGTH_ADDRESS, b'\x01', 'reserved region/length'),
+                (modern.DRIVER_START, b'\x00', 'compressed driver/padding'),
+                (modern.DRIVER_LIMIT - 1, b'\x01', 'compressed driver/padding'),
+                (modern.DRIVER_LIMIT, b'\x01', 'outside the audited'),
                 (end + 18, b'\x01', 'audited instructions'),
                 (end + 25, b'\x00', 'audited instructions'),
                 (0x2000, bytes.fromhex('0003f7fa'), 'MD\\+ signature'),
