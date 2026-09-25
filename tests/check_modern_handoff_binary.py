@@ -1,4 +1,4 @@
-"""Execute compiled inert Stage 4 68000/Z80 code; never synthesize a router.
+"""Regress compiled Stage 4 68000/Z80 APIs with native ownership.
 
 PYTHONPATH=. build/emulation-venv/bin/python tests/check_modern_handoff_binary.py
 Requires both modern builds; uses the existing dual-CPU/chip-write harness.

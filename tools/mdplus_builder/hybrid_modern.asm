@@ -1,30 +1,29 @@
-; Stage 4: unchanged native gameplay seam and disconnected Stage 3 backend.
+; Stage 5: fixed native helper and byte-identical Stage 3 backend.
 ; Included AFTER the last sound bank, BEFORE upstream padding and EndOfRom.
     if (gameRevision<>1)||(fixBugs<>0)||(padToPowerOfTwo<>1)
-        fatal "Forge modern scaffold requires REV01, fixBugs=0 and power-of-two padding"
+        fatal "Forge modern MD+ requires REV01, fixBugs=0 and power-of-two padding"
     endif
     if *<>$FFFEC
         fatal "Unexpected upstream end of sound data"
     endif
     org $100000 ; dedicated appended region; leave stock padding intact
 
-ForgeModernPlayMusic:
+ForgeModernNativeMusic:
     tst.b   (Sound_Queue.Music0).w
-    bne.s   ForgeModernPlayMusicSecond
+    bne.s   ForgeModernNativeSecond
     move.b  d0,(Sound_Queue.Music0).w
     rts
-ForgeModernPlayMusicSecond:
+ForgeModernNativeSecond:
     move.b  d0,(Sound_Queue.Music1).w
     rts
 ForgeModernNativeEnd:
     ; MOVE.B determines N/Z, clears V/C and preserves X. JMP/RTS do not
     ; change CCR. All data/address registers are preserved; no extra stack.
-    if (ForgeModernPlayMusic<>$100000)||(ForgeModernPlayMusicSecond<>$10000C)||(ForgeModernNativeEnd<>$100012)
+    if (ForgeModernNativeMusic<>$100000)||(ForgeModernNativeSecond<>$10000C)||(ForgeModernNativeEnd<>$100012)
         fatal "Unexpected Stage 2 implementation layout"
     endif
 
-; Internal backend API only. Stage 5 will connect ownership and routing.
-; The Stage 4 handoff below does not call this dispatcher. Input d0.b; preserves all
+; Backend API used after acknowledged silence. Input d0.b; preserves all
 ; data/address registers, normal RTS stack effect. CCR is scratch (X preserved).
 ; Unsupported IDs return without any write. No persistent state is allocated.
 MDP_CTRL = $0003F7FA
@@ -45,3 +44,4 @@ ForgeModernEnd:
     endif
 
     include "hybrid_modern_handoff.asm"
+    include "hybrid_modern_router.asm"

@@ -164,7 +164,10 @@ class StockVerificationTests(unittest.TestCase):
 class ModernAdapterTests(unittest.TestCase):
     # Synthetic structure, not an upstream source/asset fixture.
     fixture = (modern.NATIVE_SOURCE + '\nunchanged body\n' + modern.INPUT_START + 'synthetic input body\n' +
-               modern.INPUT_END + modern.LOADER_SOURCE + '\n' + modern.TAIL_SOURCE + 'EndOfRom:\n').encode()
+               modern.INPUT_END + modern.LOADER_SOURCE + '\n' + modern.SOUND_SOURCE + modern.SOUND2_SOURCE +
+               modern.VINT_SOURCE + modern.RESET_SOURCE +
+               '\n'.join(old for old, _, count in modern.PAUSE_SOURCES for _ in range(count)) +
+               '\n' + modern.TAIL_SOURCE + 'EndOfRom:\n').encode()
     z80_fixture = (modern.Z80_READY + modern.Z80_PAUSE + '\nzTracksSaveEnd:\n' +
                    '\tensure1byteoffset 8\nzVolTLMaskTbl:\n' + "; end of Z80 'ROM'").encode()
     constants_fixture = modern.RAM_HOLE.encode()
@@ -184,7 +187,8 @@ class ModernAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(BuildError, 'structure changed'):
             modern._prepare_modern_source(self.fixture)
         for old in (modern.NATIVE_SOURCE, modern.TAIL_SOURCE, modern.INPUT_START, modern.INPUT_END,
-                    modern.LOADER_SOURCE):
+                    modern.LOADER_SOURCE, modern.SOUND_SOURCE, modern.SOUND2_SOURCE,
+                    modern.VINT_SOURCE, modern.RESET_SOURCE):
             for replacement in ('', old + old):
                 bad = self.fixture.replace(old.encode(), replacement.encode())
                 with (
@@ -275,7 +279,8 @@ class ModernAdapterTests(unittest.TestCase):
                 patch.object(modern, 'verify_modern', side_effect=BuildError('invalid')) as verify,
                 patch.object(modern, 'verify_modern_driver'),
                 patch.object(modern, 'assembled_modern_driver', return_value=b'synthetic'),
-                patch.object(modern, 'modern_symbols', return_value=modern.HANDOFF_ADDRESSES),
+                patch.object(modern, 'modern_symbols', return_value=modern.HANDOFF_ADDRESSES |
+                             modern.ROUTER_ADDRESSES | {n: a for n, (a, _) in modern.RAM_STATE.items()}),
             ):
                 with self.assertRaisesRegex(BuildError, 'invalid'):
                     modern.build_modern()
@@ -342,7 +347,13 @@ class ModernBinaryVerificationTests(unittest.TestCase):
         stock[start:start + 18] = modern.NATIVE_PLAY_MUSIC
         stock[0x18E:0x190] = bytes.fromhex('d951')
         stock[0x1A4:0x1A8] = (len(stock) - 1).to_bytes(4, 'big')
+        for address, (_, _, original) in modern.LIVE_HOOKS.items():
+            stock[address:address + len(bytes.fromhex(original))] = bytes.fromhex(original)
         data = stock + bytearray(modern.PREPARED_ROM_SIZE - len(stock))
+        for address, value in modern.expected_live_hooks().items():
+            data[address:address + len(value)] = value
+        callback = modern.COMPLETION_ADDRESS
+        data[callback:callback + 6] = bytes.fromhex('4ef9') + modern.ROUTER_ADDRESSES['ForgeModernComplete'].to_bytes(4, 'big')
         data[start:start + 18] = modern.HOOK_BYTES
         end = modern.IMPLEMENTATION_ADDRESS
         data[end:modern.IMPLEMENTATION_END] = modern.expected_modern_extension()
@@ -362,12 +373,20 @@ class ModernBinaryVerificationTests(unittest.TestCase):
             rom[0x18E:0x190] = source.genesis_checksum(rom)[1].to_bytes(2, 'big')
 
         checksum(data)
+        original_handoff = bytearray(data[modern.IMPLEMENTATION_END:modern.HANDOFF_END])
+        relative = modern.COMPLETION_ADDRESS - modern.IMPLEMENTATION_END
+        original_handoff[relative:relative + 6] = bytes.fromhex('4238f1134e75')
+        boundaries = list(modern.ROUTER_ADDRESSES.items())
+        routine_hashes = {n: hashlib.sha256(data[a:b]).hexdigest()
+                          for (n, a), (_, b) in zip(boundaries[:-1], boundaries[1:], strict=True)}
         with (
             tempfile.TemporaryDirectory() as directory,
             patch.object(modern, 'STOCK_ROM_MD5', hashlib.md5(stock, usedforsecurity=False).hexdigest()),
             patch.object(modern, 'STOCK_ROM_SHA256', hashlib.sha256(stock).hexdigest()),
             patch.object(modern, 'STOCK_MASKED_SHA256', hashlib.sha256(normalized).hexdigest()),
-            patch.object(modern, 'HANDOFF_SHA256', hashlib.sha256(data[modern.IMPLEMENTATION_END:modern.HANDOFF_END]).hexdigest()),
+            patch.object(modern, 'HANDOFF_SHA256', hashlib.sha256(original_handoff).hexdigest()),
+            patch.object(modern, 'ROUTER_SHA256', hashlib.sha256(data[modern.ROUTER_ADDRESS:modern.ROUTER_END]).hexdigest()),
+            patch.object(modern, 'ROUTINE_SHA256', routine_hashes),
             patch.object(modern, 'DRIVER_REGION_SHA256', hashlib.sha256(data[modern.DRIVER_START:modern.DRIVER_LIMIT]).hexdigest()),
             patch.object(modern, 'Z80_COMPRESSED_SIZE', 2),
             patch.object(modern, 'Z80_LOADED_SIZE', 1),
@@ -389,7 +408,10 @@ class ModernBinaryVerificationTests(unittest.TestCase):
                 (start, b'\x00', 'absolute jump'),
                 (0x2000, modern.HOOK_BYTES, 'duplicated'),
                 (end, b'\x00', 'mailbox implementation'),
-                (modern.HANDOFF_END, b'\x01', 'zero padding'),
+                (modern.ROUTER_END, b'\x01', 'zero padding'),
+                (modern.ROUTER_ADDRESS, b'\x01', 'live router differs'),
+                (modern.COMPLETION_ADDRESS, b'\x00', 'completion callback'),
+                *((a, b'\x00', 'live hook/footprint') for a in modern.LIVE_HOOKS),
                 (modern.IMPLEMENTATION_END, b'\x01', 'handoff differs'),
                 (0x1084, b'\x00', 'input trampoline'),
                 (0xEC0DE, b'\x00', 'loader trampoline'),
@@ -449,7 +471,7 @@ class ModernBinaryVerificationTests(unittest.TestCase):
             with self.assertRaisesRegex(BuildError, 'size'):
                 modern.verify_modern(path)
             path.unlink()
-            with self.assertRaisesRegex(BuildError, 'Cannot read modern scaffold'):
+            with self.assertRaisesRegex(BuildError, r'Cannot read modern MD\+'):
                 modern.verify_modern(path)
 
 

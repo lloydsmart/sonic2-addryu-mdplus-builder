@@ -45,7 +45,7 @@ class ModernHandoffStructureTests(unittest.TestCase):
         self.assertNotIn('FixDriverBugs = 1', text)
         self.assertNotIn('coordflagLookup', text)
 
-    def test_single_shared_private_value_and_minimal_state(self):
+    def test_single_shared_private_value_and_frozen_handoff_api(self):
         root = Path(modern.__file__).parent
         asm = (root / 'hybrid_modern_handoff.asm').read_text()
         z80 = (root / 'hybrid_modern_z80.asm').read_text()
@@ -58,7 +58,7 @@ class ModernHandoffStructureTests(unittest.TestCase):
         self.assertIn('zHybridAck<>01FF4h', z80)
         self.assertIn('(ForgeModernHandoff>=CrossResetRAM)', asm)
         self.assertIn('(fixBugs<>0)', asm)
-        self.assertEqual(modern.RAM_HANDOFF.count('ds.b 1 '), 1)
+        self.assertEqual(modern.RAM_HANDOFF.count('ForgeModernHandoff: ds.b 1'), 1)
         self.assertNotIn('MDP_', asm)
         self.assertNotIn('ForgeModernDispatch', asm)
         native = modern._modern_extension_source().split('ForgeModernNativeEnd:')[0]

@@ -68,8 +68,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--local-source", type=_path, help="clone s2disasm from an existing local checkout")
     commands.add_parser("build-stock-modern", help="build and verify stock REV01 with upstream Lua (no MD+)")
 
-    commands.add_parser("prepare-modern", help="prepare the internal modern native-music scaffold (no MD+)")
-    commands.add_parser("build-modern", help="prepare, build and verify the modern scaffold (no MD+)")
+    commands.add_parser("prepare-modern", help="prepare the experimental modern live MD+ source")
+    commands.add_parser("build-modern", help="prepare, build and verify the experimental modern live MD+ ROM")
 
     p = commands.add_parser("prepare-source", help="apply the deterministic MD+ source conversion")
     p.add_argument("--source-dir", type=_path, default=SOURCE_DIR)
