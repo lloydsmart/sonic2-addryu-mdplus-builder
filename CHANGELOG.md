@@ -9,10 +9,21 @@ Versioning for its own tooling releases.
 
 ### Added
 
+- Inert Stage 4 modern music-only Z80 handoff using private F7 and ACK A5.
+  Native gameplay and the disconnected Stage 3 MD+ backend are preserved.
+  Hash-locked preparation audits all three changed upstream files. Compiled
+  CPU tests cover the loader, paused handoff, SFX preservation/progress,
+  mailbox contention, retries and RAM boundaries. Stage 5 will add ownership
+  and connect live routing.
+- Targeted modern three-slot SFX copy correction, required to preserve Music1,
+  and Saxman loader correction, required to load every modified Z80 byte.
+  Global `fixBugs=1` remains unsupported. All changes stay on the experimental
+  modern path; the production transformer and ROM remain unchanged.
+
 - Internal Stage 3 modern MD+ backend with the production sixteen-track Addryu
   routing policy and five isolated control primitives in the appended Forge
   region. Gameplay remains entirely native; the backend is disconnected until
-  Stage 4 adds music-only handoff and ownership. Exact binary audits and direct
+  Stage 4 adds the handoff and Stage 5 adds ownership/routing. Exact binary audits and direct
   CPU tests cover transactions, routes and unchanged native PlayMusic behaviour.
   Production MD+ remains the legacy/default path.
 
