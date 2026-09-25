@@ -64,3 +64,11 @@ jobs:
         run: |
           python -m tools.mdplus_builder bootstrap --skip-assembler-build
           python -m tools.mdplus_builder prepare-source
+      - name: Install Lua for modern stock build
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lua5.3
+      - name: Validate pinned modern stock build
+        run: |
+          python -m tools.mdplus_builder bootstrap-modern
+          python -m tools.mdplus_builder build-stock-modern

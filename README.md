@@ -70,8 +70,9 @@ RetroNAS. Install:
 sudo apt install git make gcc python3 ffmpeg
 ```
 
-No Python packages are required. Network access is needed only to fetch the two
-pinned source dependencies. The build never downloads a ROM or soundtrack.
+No Python packages are required. Network access is needed only to fetch pinned
+dependencies (two for the default MD+ build). The build never downloads a ROM or
+soundtrack.
 
 ## Quick start
 
@@ -134,6 +135,38 @@ make audio INPUT_DIR="$PWD/inputs/audio"
 make package
 make test
 ```
+
+## Experimental modern stock build
+
+An explicit parallel path builds unmodified stock REV01 from current
+[`sonicretro/s2disasm`](https://github.com/sonicretro/s2disasm), pinned to
+`380f37a731bfc720bb0371a35a593184a7ec5e43`. This source is **not yet MD+
+capable**. The production MD+ implementation remains the default for
+`make bootstrap`, `make source`, `make rom`, and `make all`.
+
+With Lua 5.3 or newer available as `lua` (tested with 5.3.6), run:
+
+```sh
+make bootstrap-modern
+make build-stock-modern
+```
+
+Bootstrap fetches only the modern source into ignored `build/source-modern/`.
+It also accepts `python3 -m tools.mdplus_builder bootstrap-modern
+--local-source /path/to/s2disasm` to reuse a local clone containing the pin.
+The build uses a disposable clean clone under `build/`, leaving the dependency
+checkout untouched and excluding local edits or earlier build output. It runs
+upstream's `lua build.lua` with unchanged settings and native build tools,
+without Forge's legacy ASL transformations.
+
+Only an exact audited stock REV01 match is copied to
+`build/sonic2-stock-modern.md`:
+
+- Size: `1,048,576` bytes
+- MD5: `9feeb724052c39982d432a7851c98d3e`
+- SHA-256: `193bc4064ce0daf27ea9e908ed246d87ec576cc294833badebb590b6ad8e8f6b`
+
+This experimental ROM is not used by the MD+ packaging or audio commands.
 
 ## Assembler toolchain
 

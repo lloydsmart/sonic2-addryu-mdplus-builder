@@ -2,7 +2,7 @@ PYTHON ?= python3
 MANIFEST ?= config/tracks.json
 INPUT_DIR ?= inputs/audio
 
-.PHONY: help doctor bootstrap source rom audio package all test clean
+.PHONY: help doctor bootstrap bootstrap-modern build-stock-modern source rom audio package all test clean
 
 help:
 	@$(PYTHON) -m tools.mdplus_builder --help
@@ -12,6 +12,12 @@ doctor:
 
 bootstrap:
 	@$(PYTHON) -m tools.mdplus_builder bootstrap
+
+bootstrap-modern:
+	@$(PYTHON) -m tools.mdplus_builder bootstrap-modern
+
+build-stock-modern:
+	@$(PYTHON) -m tools.mdplus_builder build-stock-modern
 
 source:
 	@$(PYTHON) -m tools.mdplus_builder prepare-source
