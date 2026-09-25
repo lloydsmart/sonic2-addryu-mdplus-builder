@@ -7,6 +7,22 @@ Versioning for its own tooling releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Promote the hardware-verified current-s2disasm REV01 implementation to the
+  default bootstrap, source, ROM, full-build, verification and packaging paths.
+  The canonical ROM is `build/sonic2-mdplus.md`, byte-identical to Stage 5
+  (`BE41`, SHA-256 `bd12138cd478596e4d294a06f573a98a6d37747dfe58d726ca62cf50dc3a8c44`).
+  Keep explicit `--legacy` / `*-legacy` fallback commands and the prior ROM
+  identity under `build/sonic2-legacy-mdplus.md`. Retain modern command aliases
+  and the old modern filename as a symlink to the canonical ROM.
+- Require the selected implementation's exact regression identity when packaging,
+  including rejection of a stale legacy ROM under the canonical output name.
+  Preserve all audio inputs, Addryu routing, loop metadata and package names.
+- Prepare legacy source in a disposable clone, retaining dependency inputs.
+  CI now builds and verifies both ROMs and executes the compiled CPU suites;
+  include the production Lua wrapper in Python package data.
+
 ### Added
 
 - Experimental Stage 5 modern live MD+ routing with acknowledged native-to-MD+
@@ -15,7 +31,7 @@ Versioning for its own tooling releases.
   PlaySound/PlaySound2, VInt, reset and direct pause hooks preserve upstream
   layout. The Stage 3 primitives and Stage 4 Z80 image remain byte-identical.
   Exact binary audits and compiled CPU tests cover the new layer. Output is
-  `build/sonic2-modern-mdplus.md`; legacy defaults and packaging are unchanged.
+  `build/sonic2-modern-mdplus.md`; Stage 6 now promotes it to the default described above.
   The required MiSTer FPGA hardware gate has passed, covering native/MD+
   transitions, SFX, controls, progression, warm reset and Death Egg/ending.
   The optional missing-WAV robustness test was not run.

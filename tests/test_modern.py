@@ -20,8 +20,8 @@ class ModernSourceTests(unittest.TestCase):
         self.assertEqual(deps['source']['commit'], 'b49afdb010090c282e1bb79f18f14a32d1bb7a99')
         self.assertNotEqual(modern.SOURCE_MODERN_DIR, SOURCE_DIR)
         self.assertNotEqual(modern.STOCK_MODERN_ROM_PATH, ROM_PATH)
-        self.assertEqual(cli.parser().parse_args(['build-rom']).source_dir, SOURCE_DIR)
-        self.assertEqual(cli.parser().parse_args(['build-rom']).output, ROM_PATH)
+        self.assertIsNone(cli.parser().parse_args(['build-rom']).source_dir)
+        self.assertIsNone(cli.parser().parse_args(['build-rom']).output)
 
     def test_bootstraps_fetch_only_their_dependencies(self) -> None:
         deps = load_json(DEPENDENCIES)
@@ -43,24 +43,6 @@ class ModernSourceTests(unittest.TestCase):
         with patch.object(cli, 'build_stock_modern', return_value={}) as build, patch.object(cli, '_print_json'):
             self.assertEqual(cli.main(['build-stock-modern']), 0)
             build.assert_called_once_with()
-
-    def test_all_still_uses_legacy_source(self) -> None:
-        with (
-            patch.object(cli, 'bootstrap') as bootstrap,
-            patch.object(cli, 'apply_mdplus') as prepare,
-            patch.object(cli, 'build_rom') as build,
-            patch.object(cli, 'prepare_audio'),
-            patch.object(cli, 'assemble'),
-            patch.object(cli, 'bootstrap_modern') as modern_bootstrap,
-            patch.object(cli, 'build_stock_modern') as modern_build,
-            patch('builtins.print'),
-        ):
-            self.assertEqual(cli.main(['all', '--input-dir', 'inputs/audio']), 0)
-            bootstrap.assert_called_once_with(local_source=None)
-            prepare.assert_called_once_with(SOURCE_DIR)
-            build.assert_called_once_with()
-            modern_bootstrap.assert_not_called()
-            modern_build.assert_not_called()
 
     def test_missing_lua_is_a_cli_error(self) -> None:
         with patch('shutil.which', return_value=None), patch('sys.stderr'):
@@ -272,7 +254,8 @@ class ModernAdapterTests(unittest.TestCase):
             (work / 's2built.bin').write_bytes(b'new output')
             with (
                 patch.object(modern, 'PREPARED_MODERN_DIR', work),
-                patch.object(modern, 'MODERN_ROM_PATH', output),
+                patch.object(modern, 'ROM_PATH', output),
+                patch.object(modern, 'MODERN_ROM_PATH', work / 'compat.md'),
                 patch.object(modern, 'require_program', return_value='/usr/bin/lua'),
                 patch.object(modern, 'prepare_modern', return_value={'source_commit': 'pin'}) as prepare,
                 patch.object(modern, 'run') as run,
@@ -283,15 +266,17 @@ class ModernAdapterTests(unittest.TestCase):
                              modern.ROUTER_ADDRESSES | {n: a for n, (a, _) in modern.RAM_STATE.items()}),
             ):
                 with self.assertRaisesRegex(BuildError, 'invalid'):
-                    modern.build_modern()
+                    modern.build_modern(output)
                 self.assertEqual(output.read_bytes(), b'previous output')
                 prepare.assert_called_once_with()
                 run.assert_called_with(['/usr/bin/lua', 'modern_build.lua'], cwd=work)
-                verify.assert_called_once_with(work / 's2built.bin')
+                verify.assert_called_once_with(work / 's2built.bin', strict_regression=True)
                 verify.side_effect = None
                 verify.return_value = {'size': 10}
-                self.assertEqual(modern.build_modern(), {'source_commit': 'pin', 'size': 10})
+                self.assertEqual(modern.build_modern(output), {'source_commit': 'pin', 'size': 10})
                 self.assertEqual(output.read_bytes(), b'new output')
+                self.assertTrue((work / 'compat.md').is_symlink())
+                self.assertTrue((work / 'compat.md').samefile(output))
 
 
 class ModernBackendPolicyTests(unittest.TestCase):
@@ -395,6 +380,17 @@ class ModernBinaryVerificationTests(unittest.TestCase):
             path = Path(directory) / 'synthetic.md'
             path.write_bytes(data)
             result = modern.verify_modern(path)
+            with self.assertRaisesRegex(BuildError, 'Stage 5 production target'):
+                modern.verify_modern(path, strict_regression=True)
+            with (
+                patch.object(modern, 'PRODUCTION_CHECKSUM', result['header_checksum']),
+                patch.object(modern, 'PRODUCTION_MD5', result['md5']),
+                patch.object(modern, 'PRODUCTION_SHA256', result['sha256']),
+            ):
+                self.assertEqual(modern.verify_modern(path, strict_regression=True), result)
+                for field in ('PRODUCTION_CHECKSUM', 'PRODUCTION_MD5', 'PRODUCTION_SHA256'):
+                    with patch.object(modern, field, 'bad'), self.assertRaises(BuildError):
+                        modern.verify_modern(path, strict_regression=True)
             modern.verify_modern_driver(data, b'\xc9')
             with self.assertRaisesRegex(BuildError, 'assembler object'):
                 modern.verify_modern_driver(data, b'incomplete object')

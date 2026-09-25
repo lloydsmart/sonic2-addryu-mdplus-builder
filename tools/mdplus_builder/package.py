@@ -5,7 +5,8 @@ import shutil
 from pathlib import Path
 
 from .audio import _track_name, validate_manifest, validate_wave
-from .common import AUDIO_DIR, DIST, ROM_PATH, BuildError, sha256
+from .common import AUDIO_DIR, DIST, LEGACY_ROM_PATH, ROM_PATH, BuildError, sha256
+from .modern import verify_modern
 from .source import verify_rom
 
 
@@ -27,9 +28,13 @@ def cue_text(manifest: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def assemble(manifest_path: Path, *, rom_path: Path = ROM_PATH, audio_dir: Path = AUDIO_DIR) -> Path:
+def assemble(
+    manifest_path: Path, *, rom_path: Path | None = None, audio_dir: Path = AUDIO_DIR, legacy: bool = False,
+) -> Path:
     manifest = validate_manifest(manifest_path)
-    verify_rom(rom_path)
+    rom_path = rom_path or (LEGACY_ROM_PATH if legacy else ROM_PATH)
+    verifier = verify_rom if legacy else verify_modern
+    verifier(rom_path, strict_regression=True)
     basename = manifest.get("rom_basename")
     if (
         not isinstance(basename, str)
