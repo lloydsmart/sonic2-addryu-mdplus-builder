@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from .common import BUILD, DEPENDENCIES, BuildError, load_json, require_program, run
-from .source import _clone_at, _git_output
+from .source import ADDRYU_TRACKS, _clone_at, _git_output
 
 SOURCE_MODERN_DIR = BUILD / "source-modern"
 STOCK_MODERN_ROM_PATH = BUILD / "sonic2-stock-modern.md"
@@ -98,6 +98,67 @@ TAIL_SOURCE = "\tfinishBank\n\n; end of 'ROM'\n"
 TAIL_REPLACEMENT = '\tfinishBank\n\n\tinclude "hybrid_modern.asm"\n\n; end of \'ROM\'\n'
 
 
+# Audited upstream ID values, not a second routing policy. The assembler uses
+# upstream symbols; the independent byte audit detects any numeric ID drift.
+MODERN_MUSIC_IDS = dict(zip((
+    "MusID_EHZ", "MusID_MCZ_2P", "MusID_OOZ", "MusID_MTZ", "MusID_HTZ",
+    "MusID_ARZ", "MusID_CNZ_2P", "MusID_CNZ", "MusID_DEZ", "MusID_MCZ",
+    "MusID_EHZ_2P", "MusID_SCZ", "MusID_CPZ", "MusID_WFZ", "MusID_HPZ",
+), range(0x82, 0x91), strict=True)) | {"MusID_SpecStage": 0x92}
+CONTROL_COMMANDS = (
+    ("ForgeModernImmediate", 0x1300), ("ForgeModernFade", 0x1328),
+    ("ForgeModernResume", 0x1400), ("ForgeModernVolumeLow", 0x1519),
+    ("ForgeModernVolumeNormal", 0x15FF),
+)
+DISPATCH_ADDRESS = IMPLEMENTATION_ADDRESS + len(NATIVE_PLAY_MUSIC)
+PRIMITIVES_ADDRESS = DISPATCH_ADDRESS + 16 * 8 + 2
+COMMANDS = CONTROL_COMMANDS + tuple(
+    (f"ForgeModernTrack{track:02d}", 0x1200 | track) for _, track in ADDRYU_TRACKS
+)
+PRIMITIVE_ADDRESSES = {label: PRIMITIVES_ADDRESS + i * 26 for i, (label, _) in enumerate(COMMANDS)}
+IMPLEMENTATION_END = PRIMITIVES_ADDRESS + 21 * 26
+OVERLAY_OPEN = bytes.fromhex("33fccd540003f7fa")
+OVERLAY_CLOSE = bytes.fromhex("33fc00000003f7fa")
+
+
+def expected_modern_extension() -> bytes:
+    """Independent instruction encoding audit: every byte and branch target."""
+    code = bytearray(NATIVE_PLAY_MUSIC)
+    for symbol, track in ADDRYU_TRACKS:
+        # Upstream encodes CMP.B immediate EA, not the CMPI alias.
+        code.extend(bytes.fromhex("b03c") + MODERN_MUSIC_IDS[symbol].to_bytes(2, "big"))
+        displacement = PRIMITIVE_ADDRESSES[f"ForgeModernTrack{track:02d}"] - (
+            IMPLEMENTATION_ADDRESS + len(code) + 2
+        )
+        code.extend(bytes.fromhex("6700") + displacement.to_bytes(2, "big", signed=True))
+    code.extend(bytes.fromhex("4e75"))
+    for _, command in COMMANDS:
+        code.extend(OVERLAY_OPEN + bytes.fromhex("33fc") + command.to_bytes(2, "big")
+                    + bytes.fromhex("0003f7fe") + OVERLAY_CLOSE + bytes.fromhex("4e75"))
+    return bytes(code)
+
+
+def _modern_extension_source() -> str:
+    text = Path(__file__).with_name("hybrid_modern.asm").read_text(encoding="utf-8")
+    dispatch = "\n".join(
+        f"    cmp.b   #{symbol},d0\n    beq.w   ForgeModernTrack{track:02d}"
+        for symbol, track in ADDRYU_TRACKS
+    )
+    commands = "\n".join(
+        f'{label}:\n    if {label}<>${PRIMITIVE_ADDRESSES[label]:06X}\n'
+        f'        fatal "Unexpected {label} boundary"\n    endif\n'
+        f"    move.w  #$CD54,(MDP_CTRL).l\n"
+        f"    move.w  #${command:04X},(MDP_CMD).l\n"
+        f"    move.w  #0,(MDP_CTRL).l\n    rts\n"
+        for label, command in COMMANDS
+    )
+    for marker, replacement in (("; @DISPATCH@", dispatch), ("; @COMMANDS@", commands)):
+        if text.count(marker) != 1:
+            raise BuildError(f"Expected exactly one modern include marker: {marker}")
+        text = text.replace(marker, replacement)
+    return text
+
+
 def _prepare_modern_source(data: bytes) -> bytes:
     if hashlib.sha256(data).hexdigest() != UPSTREAM_S2_SHA256:
         raise BuildError("Pinned modern s2.asm source structure changed")
@@ -128,7 +189,7 @@ def prepare_modern() -> dict[str, str]:
         if (work / extension.name).exists():
             raise BuildError("Modern source already contains Forge's include filename")
         main.write_bytes(prepared)
-        shutil.copy2(extension, work / extension.name)
+        (work / extension.name).write_text(_modern_extension_source(), encoding="utf-8")
         # Only this generated output is replaced; dependency checkouts are inputs.
         if PREPARED_MODERN_DIR.exists():
             shutil.rmtree(PREPARED_MODERN_DIR)
@@ -137,7 +198,7 @@ def prepare_modern() -> dict[str, str]:
 
 
 def verify_modern(path: Path) -> dict[str, str | int]:
-    """Prove the entire ROM differs from stock only by the audited Stage 2 seam."""
+    """Audit the native seam, inert backend, and reconstructed upstream identity."""
     from .source import genesis_checksum
 
     try:
@@ -154,16 +215,25 @@ def verify_modern(path: Path) -> dict[str, str | int]:
     signatures = {
         "overlay_address_signatures": data.count(bytes.fromhex("0003f7fa")),
         "command_address_signatures": data.count(bytes.fromhex("0003f7fe")),
+        "command_write_signatures": sum(data.count(bytes.fromhex("33fc") + command.to_bytes(2, "big")
+                                                     + bytes.fromhex("0003f7fe")) for _, command in COMMANDS),
         "overlay_open_signatures": data.count(bytes.fromhex("33fccd540003f7fa")),
         "overlay_close_signatures": data.count(bytes.fromhex("33fc00000003f7fa")),
     }
-    if any(signatures.values()):
+    if signatures != {
+        "overlay_address_signatures": 42, "command_address_signatures": 21,
+        "command_write_signatures": 21, "overlay_open_signatures": 21,
+        "overlay_close_signatures": 21,
+    }:
         raise BuildError(f"Unexpected MD+ signature in modern scaffold: {signatures}")
     if data[PLAY_MUSIC_ADDRESS:PLAY_MUSIC_ADDRESS + 18] != HOOK_BYTES or data.count(HOOK_BYTES) != 1:
         raise BuildError("Modern PlayMusic absolute jump/footprint changed or is duplicated")
     if data[IMPLEMENTATION_ADDRESS:IMPLEMENTATION_ADDRESS + 18] != NATIVE_PLAY_MUSIC:
         raise BuildError("Modern native mailbox implementation changed")
-    if any(data[IMPLEMENTATION_ADDRESS + 18:]):
+    extension = data[IMPLEMENTATION_ADDRESS:IMPLEMENTATION_END]
+    if extension != expected_modern_extension():
+        raise BuildError("Modern backend differs from exact audited instructions/transactions")
+    if any(data[IMPLEMENTATION_END:]):
         raise BuildError("Unexpected data after modern implementation (expected zero padding)")
 
     # Restore the only allowed differences within stock REV01 and require its
@@ -182,7 +252,11 @@ def verify_modern(path: Path) -> dict[str, str | int]:
         "sha256": hashlib.sha256(data).hexdigest(),
         "play_music_address": f"{PLAY_MUSIC_ADDRESS:06X}",
         "implementation_address": f"{IMPLEMENTATION_ADDRESS:06X}",
-        "implementation_end": f"{IMPLEMENTATION_ADDRESS + 18:06X}",
+        "native_implementation_end": f"{DISPATCH_ADDRESS:06X}",
+        "dispatch_address": f"{DISPATCH_ADDRESS:06X}",
+        "implementation_end": f"{IMPLEMENTATION_END:06X}",
+        "extension_sha256": hashlib.sha256(extension).hexdigest(),
+        "command_transactions": 21,
         **signatures,
     }
 

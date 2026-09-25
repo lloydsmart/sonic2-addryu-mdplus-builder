@@ -9,10 +9,17 @@ Versioning for its own tooling releases.
 
 ### Added
 
+- Internal Stage 3 modern MD+ backend with the production sixteen-track Addryu
+  routing policy and five isolated control primitives in the appended Forge
+  region. Gameplay remains entirely native; the backend is disconnected until
+  Stage 4 adds music-only handoff and ownership. Exact binary audits and direct
+  CPU tests cover transactions, routes and unchanged native PlayMusic behaviour.
+  Production MD+ remains the legacy/default path.
+
 - Internal `prepare-modern` and `build-modern` migration scaffold with a fixed
   PlayMusic trampoline and Forge-owned implementation in an appended ROM region.
-  All music remains native, with no runtime state or MD+ commands. Strict binary
-  checks and CPU tests protect native mailbox, register and condition-code
+  The Stage 2 seam keeps all music native, with no runtime state or MD+ commands.
+  Strict binary checks and CPU tests protect native mailbox, register and condition-code
   behaviour; stock modern and default production MD+ builds remain separate.
 
 - Explicit experimental `bootstrap-modern` and `build-stock-modern` commands
