@@ -5,9 +5,21 @@ import os
 import re
 import shutil
 import stat
+import tempfile
 from pathlib import Path
 
-from .common import ASSEMBLER_DIR, BUILD, DEPENDENCIES, ROM_PATH, SOURCE_DIR, BuildError, load_json, run, sha256
+from .common import (
+    ASSEMBLER_DIR,
+    BUILD,
+    DEPENDENCIES,
+    LEGACY_ROM_PATH,
+    PREPARED_LEGACY_DIR,
+    SOURCE_DIR,
+    BuildError,
+    load_json,
+    run,
+    sha256,
+)
 from .driver import verify_driver_load
 
 EXPECTED_ROM_SIZE = 2_129_922
@@ -544,10 +556,25 @@ def verify_rom(path: Path, *, strict_regression: bool = False) -> dict[str, str 
     }
 
 
-def build_rom(source_dir: Path = SOURCE_DIR, output: Path = ROM_PATH) -> dict[str, str | int]:
+def prepare_legacy() -> dict[str, int]:
+    """Convert committed legacy input in a disposable clone, preserving the dependency."""
+    if not SOURCE_DIR.is_dir():
+        raise BuildError("Legacy source is not fetched; run bootstrap --legacy first")
+    dependency = load_json(DEPENDENCIES)["source"]
+    with tempfile.TemporaryDirectory(prefix="prepare-legacy-", dir=BUILD) as directory:
+        work = Path(directory) / "source"
+        _clone_at(dependency["url"], dependency["commit"], work, SOURCE_DIR)
+        result = apply_mdplus(work)
+        if PREPARED_LEGACY_DIR.exists():
+            shutil.rmtree(PREPARED_LEGACY_DIR)
+        work.rename(PREPARED_LEGACY_DIR)
+    return result
+
+
+def build_rom(source_dir: Path = PREPARED_LEGACY_DIR, output: Path = LEGACY_ROM_PATH) -> dict[str, str | int]:
     asl = ASSEMBLER_DIR / "asl"
     if not asl.exists():
-        raise BuildError("Assembler is not built; run bootstrap first")
+        raise BuildError("Assembler is not built; run bootstrap --legacy first")
     env = os.environ.copy()
     env["PATH"] = str(ASSEMBLER_DIR) + os.pathsep + env.get("PATH", "")
     run(["./build.sh", "-r1", "-ds"], cwd=source_dir, env=env)

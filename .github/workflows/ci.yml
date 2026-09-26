@@ -60,7 +60,30 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Validate default track manifest
         run: python -m tools.mdplus_builder validate-manifest --manifest config/tracks.json
-      - name: Validate pinned source conversion
+      - name: Install ROM build and CPU test dependencies
         run: |
-          python -m tools.mdplus_builder bootstrap --skip-assembler-build
-          python -m tools.mdplus_builder prepare-source
+          sudo apt-get update
+          sudo apt-get install --yes lua5.3
+          python -m pip install --disable-pip-version-check '.[emulation]'
+      - name: Build pinned stock and canonical production ROMs
+        run: |
+          make bootstrap
+          make build-stock-modern
+          make rom
+          python -m tools.mdplus_builder verify-rom --strict-regression build/sonic2-mdplus.md
+      - name: Build explicit legacy fallback
+        run: |
+          make bootstrap-legacy
+          make rom-legacy
+          python -m tools.mdplus_builder verify-rom --legacy --strict-regression build/sonic2-legacy-mdplus.md
+      - name: Verify cutover identities and source pin
+        run: PYTHONPATH=. python tests/check_production_binary.py
+      - name: Execute compiled production and legacy CPU suites
+        run: |
+          PYTHONPATH=. python tests/check_modern_binary.py
+          PYTHONPATH=. python tests/check_modern_handoff_binary.py
+          PYTHONPATH=. python tests/check_modern_live_binary.py
+          PYTHONPATH=. python tests/check_hybrid_binary.py build/prepared-legacy
+          PYTHONPATH=. python tests/check_game_modes_binary.py build/prepared-legacy
+      - name: Reject unsupported fixBugs layout
+        run: PYTHONPATH=. python tests/check_modern_fixbugs.py

@@ -6,5 +6,9 @@
   "assembler": {
     "url": "https://github.com/Macroassembler-AS/asl-releases.git",
     "commit": "c7155b4fd3d33110f0eb098dede4295a8c008772"
+  },
+  "source_modern": {
+    "url": "https://github.com/sonicretro/s2disasm.git",
+    "commit": "380f37a731bfc720bb0371a35a593184a7ec5e43"
   }
 }

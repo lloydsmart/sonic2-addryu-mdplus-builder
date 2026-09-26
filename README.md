@@ -27,51 +27,45 @@ not download audio; you supply your own legitimately purchased files.
 
 ## Build status
 
-Current status: all 16 Addryu cues are enabled in the default package and have
-been hardware-verified on MiSTer, including their loops. Native title/menu
-music, temporary native cues, native SFX alongside MD+ BGM, pause/resume and
-fades have also been tested.
+The normal build uses current `sonicretro/s2disasm` REV01 with Forge's MD+
+implementation. Its required Stage 5 MiSTer FPGA hardware gate has passed:
+boot, native title/menu audio, Addryu transitions, ordinary SFX, pause/resume,
+speed shoes, extra life, warm reset, level select, and Death Egg/ending were
+verified. All 16 Addryu cues and the manifest loops retain their earlier
+hardware verification. The optional missing-WAV robustness test was not run.
 
-The pinned `msu-md-sonic2` fork includes the game-mode dispatch repair
-submitted upstream as
-[ArcadeTV PR #5](https://github.com/ArcadeTV/msu-md-sonic2/pull/5).
-The Sound Test `19, 65, 09, 17` cheat followed by holding A + Start now opens
-the normal 1P level select, and defeating the Death Egg final boss now enters
-the ending cinematic instead of the VS/multiplayer level-select menu. Both
-fixes have passed MiSTer hardware verification. REV01 is the current
-hardware-verified baseline.
+The current production build and package commands use that exact hardware-tested
+ROM. Version 2.0.0 makes it the default while preserving its game and audio
+behavior. The previous production implementation remains an explicit legacy fallback.
 
 ## What the build does
 
-1. Fetches exact, pinned revisions of
-   [`lloydsmart/msu-md-sonic2`](https://github.com/lloydsmart/msu-md-sonic2),
-   a fork of ArcadeTV's Sonic 2 MSU-MD source, and the maintained
-   Macroassembler AS (ASL) release.
-2. Builds the assembler locally from source.
-3. Deterministically removes the Mega-CD bootstrap/polling/seek path, replaces
-   playback with MD+ commands, and wraps every command in a short-lived MD+
-   overlay transaction after Sonic's startup checksum. A fixed sixteen-cue
-   policy routes Addryu arrangements to MD+ and all other music to the original
-   Sonic 2 YM2612/PSG/DAC soundtrack; SFX always use the native driver.
-4. Builds the Rev 1 ROM and verifies its Mega Drive header checksum, MD+
-   instruction signatures, size, and SHA-256 regression value.
-5. Normalizes enabled user source audio to 44.1 kHz, signed 16-bit stereo PCM,
-   trims it on an exact 75 Hz sector boundary, validates it, and generates the
-   MD+ CUE.
-6. Creates an ignored `dist/` directory ready to copy to MiSTer's Mega Drive
-   games area.
+1. Fetches [`sonicretro/s2disasm`](https://github.com/sonicretro/s2disasm), pinned
+   to `380f37a731bfc720bb0371a35a593184a7ec5e43` in `config/dependencies.json`.
+2. Prepares a disposable source clone and builds REV01 with upstream's Lua
+   build and native tools. Dependency source checkouts remain inputs.
+3. Adds the verified MD+ implementation. Sixteen fixed Addryu cues use MD+;
+   other music and all SFX use the native driver. Every MD+ command uses a
+   short-lived overlay transaction after Sonic's startup checksum.
+4. Verifies the ROM's checksum, exact instruction signatures, loaded Z80
+   driver, size, MD5 and SHA-256 against the hardware-tested baseline.
+5. Normalizes user-supplied WAVs to 44.1 kHz signed 16-bit stereo PCM, trims
+   them on exact 75 Hz sector boundaries, validates them, and generates a CUE.
+6. Creates an ignored `dist/` package ready to copy to MiSTer.
 
 ## Prerequisites
 
-The supported build host is a current Debian-like Linux system, including
-RetroNAS. Install:
+The supported host is a current Debian-like Linux system, including RetroNAS:
 
 ```sh
-sudo apt install git make gcc python3 ffmpeg
+sudo apt install git make gcc python3 lua5.3 ffmpeg
 ```
 
-No Python packages are required. Network access is needed only to fetch the two
-pinned source dependencies. The build never downloads a ROM or soundtrack.
+Lua 5.3 or newer must be available as `lua`. No third-party Python packages are
+required for normal builds. Network access fetches one pinned source dependency
+for the default build; legacy additionally needs its fork and ASL. The repository
+supplies tooling and metadata, not a ROM or soundtrack. Audio must be supplied
+locally from your lawful purchase.
 
 ## Quick start
 
@@ -124,54 +118,91 @@ directly.
 
 ## Repeatable commands
 
-Run the stages independently when developing:
+Run the stages independently:
 
 ```sh
 make bootstrap
+python3 -m tools.mdplus_builder validate-manifest --manifest config/tracks.json
 make source
 make rom
 make audio INPUT_DIR="$PWD/inputs/audio"
 make package
-make test
 ```
 
-## Assembler toolchain
+`make rom` prepares fresh committed input each time and writes the canonical
+`build/sonic2-mdplus.md`. `make source` is useful for inspecting generated source
+in `build/prepared-modern/`, but a separate preparation is not required before
+building. Edits to that generated directory are replaced on the next build.
 
-The assembler is ASL 1.42 build 306 from
-[Macroassembler-AS/asl-releases](https://github.com/Macroassembler-AS/asl-releases),
-pinned to commit `c7155b4fd3d33110f0eb098dede4295a8c008772` in
-`config/dependencies.json`. Bootstrap builds its unmodified source with the
-portable `Makefile.def.tmpl` and `make binaries` under ignored `build/asl/`.
-No system-wide assembler installation is required.
+`make package` uses the canonical ROM and prepared `build/audio/` WAVs. It
+requires an exact production ROM match, so an old legacy ROM left under the
+canonical name is rejected; run `make rom` after upgrading. The Addryu manifest,
+track filenames, loop coordinates, matching ROM/CUE basenames and package
+layout are unchanged. `SHA256SUMS.json` covers every packaged ROM, WAV and CUE.
 
-Existing checkouts created before the fixed source pin should remove the
-ignored `build/source/` checkout once before running `make bootstrap`:
+To use a local clone containing the exact current source pin:
 
 ```sh
-rm -rf build/source
-make bootstrap
+python3 -m tools.mdplus_builder bootstrap --local-source "$HOME/src/s2disasm"
 ```
 
-This does not affect soundtrack inputs under `inputs/`. The previous
-`build/as-sonic/` directory is unused and can remain in place. Source
-preparation remains deterministic and rejects unexpected edits.
+The builder clones committed input; it does not modify that local checkout.
+The module CLI is also available as `sonic2-mdplus` after installation.
+Run `make help` or add `--help` to an individual CLI command for its options.
 
-The pinned Sonic source predates current ASL semantics. Preparation balances
-replacement RAM `PHASE` sections, checks RAM usage without relying on 32-bit
-counter wraparound, makes word-sized RAM operands explicit, and parenthesizes
-ambiguous anonymous-label expressions. It also makes the signed 8-bit intent
-of 33 audited high-byte `moveq` operands explicit while retaining symbolic IDs.
-These are syntax compatibility changes;
-the source revision, upstream build script, Sonic object converter/compressor,
-pointer fixups, and header fixer remain unchanged.
+## Explicit legacy fallback
 
-The assembler migration preserved the complete ROM SHA-256 at that time,
-including the compressed Z80 driver. The nine CPU-level
-tests described below provide additional regression coverage. The only remaining
-ASL warning is the intentional odd-address word access (`move.w (1).w,d0`),
-which causes a hardware crash; its instruction remains unchanged. The assembler
-migration itself did not change the ROM baseline. The subsequent game-mode
-repair establishes the hardware-verified baseline below.
+The earlier hardware-verified `msu-md-sonic2` implementation remains available
+for rollback and comparison. It is pinned to fork commit
+`b49afdb010090c282e1bb79f18f14a32d1bb7a99`, including the upstream game-mode
+repair. Its audio implementation is preserved unchanged.
+
+```sh
+make bootstrap-legacy
+make rom-legacy
+python3 -m tools.mdplus_builder verify-rom --legacy \
+  --strict-regression build/sonic2-legacy-mdplus.md
+```
+
+These targets use the CLI `--legacy` option. `make source-legacy` prepares
+`build/prepared-legacy/`; `make rom-legacy` regenerates it before building.
+Legacy uses ASL 1.42 build 306, pinned to
+`c7155b4fd3d33110f0eb098dede4295a8c008772`, built locally under `build/asl/`.
+The established source syntax conversion and driver checks remain intact.
+
+Use `make package-legacy` to package the legacy ROM with already prepared audio,
+or `make all-legacy INPUT_DIR="$PWD/inputs/audio"` for the entire fallback build.
+Both deliberately replace the same named Addryu directory under `dist/` with a
+legacy package; preserve a local copy first if comparing both. `make package`
+restores the production package from the separate canonical ROM. Neither ROM
+build overwrites the other implementation's build output.
+
+For offline source reuse, `bootstrap --legacy --local-source /path/to/fork`
+requires a clone containing the pinned `lloydsmart/msu-md-sonic2` commit.
+An ArcadeTV-only clone without that commit cannot supply it.
+
+## Compatibility and development commands
+
+The existing `bootstrap-modern`, `prepare-modern` and `build-modern` Make/CLI
+commands remain aliases for production bootstrap, preparation and building.
+`build-modern` writes `build/sonic2-mdplus.md`; the old
+`build/sonic2-modern-mdplus.md` name is a relative symlink to that same file.
+There is no separate modern candidate or second ROM copy.
+
+`make build-stock-modern` remains an independent audit of untouched upstream
+REV01 after bootstrap. It builds in a disposable clone and verifies:
+
+- Output: `build/sonic2-stock-modern.md`
+- Size: `1,048,576` bytes; checksum: `D951`
+- MD5: `9feeb724052c39982d432a7851c98d3e`
+- SHA-256: `193bc4064ce0daf27ea9e908ed246d87ec576cc294833badebb590b6ad8e8f6b`
+
+Stock output has no MD+ support and is never selected for packaging.
+Internal `hybrid_modern*.asm` names and `source_modern` configuration retain
+historical names to keep maintenance changes small. See the
+[Stage 6 interface audit](docs/STAGE6_CUTOVER.md),
+[production architecture](docs/MODERN_STAGE5.md) and
+[preceding handoff stage](docs/MODERN_STAGE4.md) for development details.
 
 ## Audio normalization policy
 
@@ -194,18 +225,6 @@ All trimming and sector calculations occur after conversion in the final
 44.1 kHz domain. Without an explicit end sector, only complete 588-frame CD
 sectors are retained and the incomplete trailing fragment is reported.
 
-To reuse an existing clean checkout instead of downloading the Sonic source,
-the checkout must contain the pinned `lloydsmart/msu-md-sonic2` commit:
-
-```sh
-python3 -m tools.mdplus_builder bootstrap \
-  --local-source "$HOME/src/msu-md-sonic2"
-```
-
-The tool clones the specified checkout at the exact pinned commit into
-`build/source`; it does not alter the original checkout. An ArcadeTV-only clone
-that has not fetched the fork commit cannot supply this dependency.
-
 ## ROM verification
 
 The source build is the authoritative path; a clean cartridge ROM is not used
@@ -225,23 +244,21 @@ python3 -m tools.mdplus_builder verify-rom \
   --strict-regression build/sonic2-mdplus.md
 ```
 
-Hardware-verified hybrid regression values:
+The production build and packaging enforce the exact Stage 5 identity:
 
-- size: `2,129,922` bytes
+- Size: `2,097,152` bytes; Mega Drive checksum: `BE41`
+- MD5: `9eb40c0601a7c424a0d1ce168b5f40f2`
+- SHA-256: `bd12138cd478596e4d294a06f573a98a6d37747dfe58d726ca62cf50dc3a8c44`
+- 21 complete MD+ command transactions; unchanged Stage 3 backend and Stage 4 Z80
+
+Explicit legacy verification enforces:
+
+- Size: `2,129,922` bytes; Mega Drive checksum: `2911`
 - SHA-256: `315c69fb84dbca2a31ceffe3face70b4138317feed53feb7e23c6a5ab009205e`
-- Mega Drive checksum: `2911`
-- 21 complete MD+ open/command/close signatures and one Emerald Hill track-03
-  signature
 
-The repaired REV01 ROM is the audited production baseline. Both `build-rom`
-and `--strict-regression` enforce these values after a complete MiSTer
-hardware playthrough, including the level-select cheat, MD+ and native-audio
-handoffs, Special Stages, 2P, Super Sonic, and the Death Egg ending transition.
-
-The first hybrid hardware test failed. This corrected ROM fixes the truncated
-Z80 driver load, separates the handoff ACK from the command queue, and has since
-passed extended MiSTer testing. See the
-[failure analysis](docs/HYBRID_AUDIO.md#first-hardware-failure).
+`verify-rom` selects the current implementation unless `--legacy` is supplied.
+Neither a stock ROM nor the other implementation is accepted by strict
+verification or packaging for the selected path.
 
 ## Adding tracks and loop points
 
@@ -268,53 +285,81 @@ soundtrack or conversion of native music to WAV is needed. MD+ speed variants
 are disabled: speed shoes change physics while Addryu music keeps playing at
 normal speed. Native speed controls retain the original driver behavior.
 
-See [hybrid architecture](docs/HYBRID_AUDIO.md) for queue semantics, handoff
-ordering, RAM allocation, and the retained native 1-up limitations.
+See [production architecture](docs/MODERN_STAGE5.md) for queue semantics,
+handoff ordering, RAM allocation and hardware coverage limits. The
+[legacy architecture](docs/HYBRID_AUDIO.md) remains documented for fallback use.
 
-## Clean Linux regression
+## Validation and clean Linux regression
 
-After `make bootstrap`, create a separate clean checkout of the pinned source
-and rebuild it without touching existing diagnostic checkouts:
-
-```sh
-python3 - <<'PYTHON'
-from tools.mdplus_builder.common import BUILD, SOURCE_DIR, DEPENDENCIES, load_json
-from tools.mdplus_builder.source import _clone_at, apply_mdplus, build_rom
-
-deps = load_json(DEPENDENCIES)["source"]
-clean = BUILD / "hybrid-clean"
-_clone_at(deps["url"], deps["commit"], clean, local_source=SOURCE_DIR)
-print(apply_mdplus(clean))
-print(build_rom(clean, BUILD / "hybrid-clean.md"))
-PYTHON
-```
-
-Every build also verifies the loader instructions and compares the complete
-ROM-decompressed Z80 driver against the assembled object segment. Use a fresh
-destination for later runs if that checkout already contains generated changes.
-The clean build must pass the strict regression check against the audited
-hardware baseline above. Run both binary suites below against that build.
-
-For CPU-level handoff regression tests, install the optional emulation tools
-in an ignored virtual environment and use the generated ROM and map:
+Install development checks if needed:
 
 ```sh
 python3 -m venv build/emulation-venv
-build/emulation-venv/bin/pip install -e '.[emulation]'
-PYTHONPATH=. build/emulation-venv/bin/python tests/check_hybrid_binary.py \
-  build/hybrid-clean
-PYTHONPATH=. build/emulation-venv/bin/python tests/check_game_modes_binary.py \
-  build/hybrid-clean
+build/emulation-venv/bin/pip install -e '.[lint,emulation]'
+npm ci --ignore-scripts
 ```
 
-These tests execute the actual loader, router, input service, Z80 dispatcher and
-VInt code. They record MD+ commands and sound-chip writes, supplementing the
-existing MiSTer audio verification with deterministic CPU-level coverage.
-The gameplay suite additionally checks all eleven compiled game-mode slots,
-sound-test cheat entry and title transitions (including negative controls),
-the final Death Egg transition, and the 2P Results return stack. It executes
-actual ROM code at these boundaries, with graphics/interrupt timing excluded;
-it does not replace MiSTer gameplay testing.
+Run the repository checks (put the virtual environment on PATH for Ruff):
+
+```sh
+PATH="$PWD/build/emulation-venv/bin:$PATH" ruff check .
+npm run lint:markdown
+python3 -m compileall -q tools tests
+python3 -m unittest discover -s tests -v
+python3 -m tools.mdplus_builder validate-manifest --manifest config/tracks.json
+git diff --check
+```
+
+From a fresh checkout, with no `build/` or `dist/` outputs, repeat the quick start
+using your existing lawful audio input directory. `make all` fetches the source,
+regenerates the ROM and audio, and creates the complete package. For example,
+from a checkout containing committed changes:
+
+```sh
+git clone --no-hardlinks . build/clean-linux
+cd build/clean-linux
+make doctor
+python3 -m tools.mdplus_builder validate-manifest --manifest config/tracks.json
+make all INPUT_DIR=/absolute/path/to/your/purchased/audio
+python3 -m tools.mdplus_builder verify-rom --strict-regression build/sonic2-mdplus.md
+make bootstrap-legacy
+make rom-legacy
+python3 -m tools.mdplus_builder verify-rom --legacy \
+  --strict-regression build/sonic2-legacy-mdplus.md
+```
+
+That disposable checkout has its own `build/` and `dist/`; source and generated
+outputs from the original checkout are not reused. For uncommitted development,
+copy all tracked and nonignored new files into a disposable directory instead.
+Keep the copy under ignored `build/`; include no existing generated output.
+
+Back in the original checkout, build both implementations and stock once, then
+run the explicit compiled binary suites:
+
+```sh
+make bootstrap
+make build-stock-modern
+make rom
+make bootstrap-legacy
+make rom-legacy
+PYTHONPATH=. build/emulation-venv/bin/python tests/check_production_binary.py
+PYTHONPATH=. build/emulation-venv/bin/python tests/check_modern_binary.py
+PYTHONPATH=. build/emulation-venv/bin/python tests/check_modern_handoff_binary.py
+PYTHONPATH=. build/emulation-venv/bin/python tests/check_modern_live_binary.py
+PYTHONPATH=. build/emulation-venv/bin/python tests/check_hybrid_binary.py build/prepared-legacy
+PYTHONPATH=. build/emulation-venv/bin/python tests/check_game_modes_binary.py build/prepared-legacy
+PYTHONPATH=. build/emulation-venv/bin/python tests/check_modern_fixbugs.py
+```
+
+The binary suites check exact production/fallback identities and execute compiled
+68000/Z80 instructions for backend, handoff, live routing and legacy game modes.
+`fixBugs=1` must be rejected by the fixed-layout assembly assertion. These tests
+do not model audible mixing, SD-card access or console bus timing.
+
+The production ROM is byte-identical to the hardware-tested Stage 5 image, so
+its passed hardware gate also covers this release. The
+[short MiSTer RC checklist](docs/STAGE6_CUTOVER.md#short-mister-rc-checklist)
+is available to confirm discovery and playback from the newly generated package.
 
 ## Copyright
 

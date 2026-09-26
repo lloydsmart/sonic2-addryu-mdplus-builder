@@ -1,10 +1,10 @@
 # Third-party notices
 
-This repository contains original build tooling and does not vendor the two
-source dependencies below. The bootstrap command fetches their exact pinned
-commits into the ignored `build/` directory.
+This repository contains original build tooling and does not vendor the
+source dependencies below. The explicit bootstrap commands fetch their exact
+pinned commits into the ignored `build/` directory.
 
-## lloydsmart/msu-md-sonic2
+## lloydsmart/msu-md-sonic2 (explicit legacy fallback)
 
 - Repository: <https://github.com/lloydsmart/msu-md-sonic2>
 - Upstream: <https://github.com/ArcadeTV/msu-md-sonic2>
@@ -12,12 +12,31 @@ commits into the ignored `build/` directory.
 - Upstream repair: <https://github.com/ArcadeTV/msu-md-sonic2/pull/5>
 - Declared repository license: CC0 1.0 Universal
 
+This dependency supplies the explicit legacy fallback, selected with
+`bootstrap --legacy`, rather than the default production source.
 The pinned fork commit is based directly on ArcadeTV commit
 `23d24dda3758a1fd341c01e7f7e94e11780a2608` and contains the game-mode dispatch
 repair used by this build. The project applies its deterministic MD+ conversion
 to a temporary checkout. The dependency may contain material whose rights are
 not granted merely by its repository license; users remain responsible for
 lawful use.
+
+## sonicretro/s2disasm (production source)
+
+- Repository: <https://github.com/sonicretro/s2disasm>
+- Pinned commit: `380f37a731bfc720bb0371a35a593184a7ec5e43`
+- Normal `bootstrap` fetches it into ignored `build/source-modern/`.
+- `bootstrap-modern` is retained only as a compatibility alias.
+
+This is the production Sonic 2 source dependency. Production preparation and
+building operate on disposable clones, using upstream's `lua build.lua` and
+its bundled native build tools. `build-stock-modern` remains a separate
+untouched-upstream audit build, also using a disposable clone. No source, tools,
+Sega assets, or generated ROMs are vendored or redistributed by Forge.
+The pinned upstream `readme.md`
+states that the material is for informational and educational purposes,
+prohibits commercial usage, and disclaims ownership and warranty. Forge's
+license does not grant rights to this dependency or the game assets.
 
 ## Macroassembler-AS/asl-releases
 
