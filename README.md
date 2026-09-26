@@ -34,9 +34,9 @@ speed shoes, extra life, warm reset, level select, and Death Egg/ending were
 verified. All 16 Addryu cues and the manifest loops retain their earlier
 hardware verification. The optional missing-WAV robustness test was not run.
 
-Stage 6 promotes that exact ROM to the default build and package commands.
-It changes the build interface, not the game or audio behavior. The previous
-production implementation remains an explicit legacy fallback.
+The current production build and package commands use that exact hardware-tested
+ROM. Version 2.0.0 makes it the default while preserving its game and audio
+behavior. The previous production implementation remains an explicit legacy fallback.
 
 ## What the build does
 
@@ -155,7 +155,7 @@ Run `make help` or add `--help` to an individual CLI command for its options.
 The earlier hardware-verified `msu-md-sonic2` implementation remains available
 for rollback and comparison. It is pinned to fork commit
 `b49afdb010090c282e1bb79f18f14a32d1bb7a99`, including the upstream game-mode
-repair. Nothing in Stage 6 removes or rewrites its audio implementation.
+repair. Its audio implementation is preserved unchanged.
 
 ```sh
 make bootstrap-legacy
@@ -356,8 +356,8 @@ The binary suites check exact production/fallback identities and execute compile
 `fixBugs=1` must be rejected by the fixed-layout assembly assertion. These tests
 do not model audible mixing, SD-card access or console bus timing.
 
-The Stage 5 hardware gate remains passed. Since the Stage 6 ROM is byte-identical,
-a repeat full playthrough is unnecessary for this interface cutover. The
+The production ROM is byte-identical to the hardware-tested Stage 5 image, so
+its passed hardware gate also covers this release. The
 [short MiSTer RC checklist](docs/STAGE6_CUTOVER.md#short-mister-rc-checklist)
 is available to confirm discovery and playback from the newly generated package.
 
